@@ -15,7 +15,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     
     steps:
     - name: Checkout repository
@@ -58,17 +58,17 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.buildozer
-        key: ${{ runner.os }}-buildozer-global-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-global-v2-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-global-
+          ${{ runner.os }}-buildozer-global-v2-
     
     - name: Cache Buildozer project
       uses: actions/cache@v4
       with:
         path: .buildozer
-        key: ${{ runner.os }}-buildozer-project-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-project-v2-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-project-
+          ${{ runner.os }}-buildozer-project-v2-
     
     - name: Initialize Buildozer
       run: |

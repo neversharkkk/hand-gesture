@@ -3,9 +3,10 @@ import numpy as np
 from kivy.logger import Logger
 
 try:
-    from android.permissions import request_permissions, Permission
+    from android.permissions import request_permissions, Permission, check_permission
     from jnius import autoclass
     ANDROID_AVAILABLE = True
+    PythonActivity = autoclass('org.kivy.android.PythonActivity')
 except ImportError:
     ANDROID_AVAILABLE = False
     Logger.warning("AndroidCamera: Android modules not available, running in desktop mode")
@@ -29,30 +30,46 @@ class AndroidCamera:
             return
         
         try:
-            request_permissions([
+            permissions = [
                 Permission.CAMERA,
                 Permission.WRITE_EXTERNAL_STORAGE,
-                Permission.READ_EXTERNAL_STORAGE
-            ])
+                Permission.READ_EXTERNAL_STORAGE,
+            ]
+            
+            try:
+                permissions.append(Permission.READ_MEDIA_IMAGES)
+                permissions.append(Permission.READ_MEDIA_VIDEO)
+            except AttributeError:
+                pass
+            
+            request_permissions(permissions)
+            
             self.permission_granted = True
             Logger.info("AndroidCamera: Permissions requested")
         except Exception as e:
             Logger.error(f"AndroidCamera: Permission request failed: {e}")
-            self.permission_granted = False
+            self.permission_granted = True
     
     def open(self):
         if not self.permission_granted and ANDROID_AVAILABLE:
-            Logger.error("AndroidCamera: Camera permission not granted")
-            return False
+            Logger.warning("AndroidCamera: Camera permission not granted, trying anyway")
         
         try:
-            self.cap = cv2.VideoCapture(self.camera_index)
+            self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_ANDROID)
             
             if not self.cap.isOpened():
                 for i in range(4):
-                    self.cap = cv2.VideoCapture(i)
+                    self.cap = cv2.VideoCapture(i, cv2.CAP_ANDROID)
                     if self.cap.isOpened():
                         Logger.info(f"AndroidCamera: Opened camera {i}")
+                        break
+            
+            if self.cap is None or not self.cap.isOpened():
+                self.cap = cv2.VideoCapture(self.camera_index)
+                for i in range(4):
+                    self.cap = cv2.VideoCapture(i)
+                    if self.cap.isOpened():
+                        Logger.info(f"AndroidCamera: Opened camera {i} (fallback)")
                         break
             
             if self.cap is None or not self.cap.isOpened():
@@ -62,6 +79,7 @@ class AndroidCamera:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             self.cap.set(cv2.CAP_PROP_FPS, 30)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             
             actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))

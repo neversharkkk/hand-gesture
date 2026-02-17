@@ -17,6 +17,9 @@ current_mode = MODE_GESTURE
 
 gesture_history = deque(maxlen=5)
 
+# 全局缩放因子（用于适配不同分辨率）
+scale_factor = 1.0
+
 # 背景减除器
 bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=60, detectShadows=False)
 
@@ -161,7 +164,7 @@ class AudioSynthesizer:
         outdata[:, 0] = np.clip(wave, -1, 1).astype(np.float32)
     
     def update_from_gesture(self, hand_y, hand_area, hand_x, colors, finger_count=0):
-        """从手势更新合成器参数"""
+        """从手势和颜色更新合成器参数，让声音符合画面"""
         # 手的Y位置控制频率 (高=高频，低=低频)
         self.frequency = 80 + (1.0 - hand_y) * 700  # 80-780 Hz
         self.frequency2 = self.frequency * 1.5  # 五度
@@ -178,13 +181,56 @@ class AudioSynthesizer:
         self.detune = finger_count * 2.0
         self.lfo_type = finger_count % 3
         
-        # 颜色影响
+        # 颜色影响 - 让声音符合画面
         if colors is not None and len(colors) > 0:
+            # 计算主色调的HSV
             main_color = colors[0]
-            self.color_hue = (main_color[0] * 0.3 + main_color[1] * 0.59 + main_color[2] * 0.11) / 255.0
-            max_val = max(main_color)
-            min_val = min(main_color)
-            self.color_sat = (max_val - min_val) / max_val if max_val > 0 else 0
+            r, g, b = main_color[0] / 255.0, main_color[1] / 255.0, main_color[2] / 255.0
+            
+            # 计算色相 (Hue) 0-360度
+            max_c = max(r, g, b)
+            min_c = min(r, g, b)
+            delta = max_c - min_c
+            
+            if delta == 0:
+                hue = 0
+            elif max_c == r:
+                hue = 60 * (((g - b) / delta) % 6)
+            elif max_c == g:
+                hue = 60 * (((b - r) / delta) + 2)
+            else:
+                hue = 60 * (((r - g) / delta) + 4)
+            
+            # 计算饱和度 (Saturation)
+            saturation = delta / max_c if max_c > 0 else 0
+            
+            # 计算明度 (Value/Brightness)
+            value = max_c
+            
+            # 色相影响：频率微调（不同色相产生不同音色感觉）
+            # 红(0°) -> 低频偏移，蓝(240°) -> 高频偏移
+            hue_factor = (hue / 360.0) * 0.25  # ±25%频率偏移（增加影响）
+            self.frequency = self.frequency * (1.0 + hue_factor - 0.125)
+            
+            # 饱和度影响：泛音丰富度和LFO深度
+            # 高饱和度 -> 更丰富的泛音，更深的LFO
+            self.color_sat = saturation
+            self.lfo_depth = min(0.7, self.lfo_depth + saturation * 0.2)  # 增加影响
+            
+            # 明度影响：音量和滤波器
+            # 高明度 -> 更亮的声音（更高的滤波器截止）
+            self.filter_cutoff = self.filter_cutoff * (0.6 + value * 0.8)  # 增加影响
+            self.volume = 0.3 + value * 0.3  # 明度影响音量
+            
+            # 存储用于显示
+            self.color_hue = hue / 360.0
+            
+            # 颜色多样性：如果有多种颜色，增加声音复杂度
+            if len(colors) >= 3:
+                # 计算颜色多样性
+                color_variance = np.var(colors[:4], axis=0).mean() / 255.0
+                self.detune += color_variance * 5  # 增加失谐
+                self.reverb_mix = 0.2 + color_variance * 0.4  # 增加混响
         
         # 延迟时间
         self.delay_time = 0.1 + hand_x * 0.3
@@ -268,11 +314,13 @@ def process_hand(image):
     combined = cv2.bitwise_and(skin_mask, fg_mask)
     
     # 如果融合结果太少，使用纯皮肤检测
-    if cv2.countNonZero(combined) < 1000:
+    min_combined_pixels = int(1000 * (scale_factor ** 2))
+    if cv2.countNonZero(combined) < min_combined_pixels:
         combined = skin_mask
     
-    # 4. 形态学处理
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    # 4. 形态学处理（根据分辨率调整内核大小）
+    kernel_size = max(5, int(7 * scale_factor))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel, iterations=3)
     combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel, iterations=2)
     
@@ -290,9 +338,16 @@ def process_hand(image):
     best_contour = None
     best_score = 0
     
+    # 根据分辨率缩放阈值
+    min_area = int(1500 * (scale_factor ** 2))
+    area_low = int(2000 * (scale_factor ** 2))
+    area_high = int(80000 * (scale_factor ** 2))
+    area_ext_low = int(1500 * (scale_factor ** 2))
+    area_ext_high = int(100000 * (scale_factor ** 2))
+    
     for cnt in contours:
         area = cv2.contourArea(cnt)
-        if area < 1500:  # 降低最小面积阈值
+        if area < min_area:
             continue
         
         perimeter = cv2.arcLength(cnt, True)
@@ -313,10 +368,10 @@ def process_hand(image):
         # 计算得分
         score = 0
         
-        # 面积得分 - 放宽范围
-        if 2000 < area < 80000:
+        # 面积得分 - 放宽范围（使用缩放后的阈值）
+        if area_low < area < area_high:
             score += 30
-        elif 1500 < area < 100000:
+        elif area_ext_low < area < area_ext_high:
             score += 20
         
         # 圆形度得分 - 放宽范围
@@ -548,6 +603,7 @@ def control_cube(gesture_name, finger_count, hand_center, w, h):
 
 # ASCII艺术字符集（按亮度排序，增加多样性）
 ASCII_CHARS = " .',:;ilI1|\\/()[]{}?_-+~=<>!@#$%&*#"
+ASCII_CHARS_EXTENDED = " .·'´:;,·°ºªilI1|\\/()[]{}?_-+~=<>!@#$%&*#█▓▒░"  # 扩展字符集
 ASCII_COLORS = [
     (50, 50, 50),
     (70, 70, 70),
@@ -565,8 +621,8 @@ ASCII_COLORS = [
     (255, 200, 50),
 ]
 
-def create_ascii_art(image, contour, mask):
-    """在检测到的手部区域创建ASCII艺术效果，带蓝色渐变叠加"""
+def create_ascii_art(image, contour, mask, synth=None):
+    """在检测到的手部区域创建ASCII艺术效果，符号颜色根据明暗渐变，合成器影响字符"""
     if contour is None:
         return image
     
@@ -589,8 +645,25 @@ def create_ascii_art(image, contour, mask):
     # 转换为灰度图
     gray = cv2.cvtColor(hand_region, cv2.COLOR_BGR2GRAY)
     
-    # 计算ASCII字符大小（缩小）
-    char_size = max(4, min(8, cw // 30))
+    # 根据模式设置不同参数
+    if synth is not None:
+        # 模式5：合成器模式，更大更稀疏，扩展字符集，无震荡
+        base_char_size = max(14, min(20, cw // 12))
+        # 频率影响字符大小：更灵敏（高频=小字符，低频=大字符）
+        freq_factor = 1.0 - (synth.frequency - 80) / 700 * 0.5  # 更灵敏
+        char_size = int(base_char_size * freq_factor)
+        char_size = max(8, min(28, char_size))  # 扩大范围
+        jitter_freq = 0  # 无震荡
+        char_offset = int(synth.envelope_target * 30)  # 更多样的字符偏移
+        chars_to_use = ASCII_CHARS_EXTENDED  # 扩展字符集
+        skip_rate = 0.25  # 更稀疏
+    else:
+        # 模式3：普通ASCII模式，回到之前的大小
+        char_size = max(4, min(8, cw // 30))
+        jitter_freq = 0
+        char_offset = 0
+        chars_to_use = ASCII_CHARS
+        skip_rate = 0
     
     # 创建ASCII艺术图像
     ascii_h = ch // char_size
@@ -602,12 +675,20 @@ def create_ascii_art(image, contour, mask):
     # 创建输出图像
     result = image.copy()
     
-    # 创建蓝色渐变叠加层
-    overlay = result.copy()
+    # 当前时间用于抖动
+    current_time = time.time()
     
-    # 在手部区域绘制ASCII字符
+    # 为每个字符生成随机相位偏移（基于位置，保持一致性）
+    np.random.seed(42)
+    phase_offsets = np.random.random((ascii_h, ascii_w)) * 2 * np.pi
+    
+    # 在手部区域绘制ASCII字符（稀疏采样）
     for row in range(ascii_h):
         for col in range(ascii_w):
+            # 随机跳过一些字符，让显示更稀疏多样
+            if skip_rate > 0 and np.random.random() < skip_rate:
+                continue
+            
             # 计算当前块的平均亮度
             y_start = row * char_size
             y_end = min((row + 1) * char_size, ch)
@@ -627,35 +708,43 @@ def create_ascii_art(image, contour, mask):
             # 计算平均亮度
             avg_brightness = np.mean(block)
             
-            # 映射到ASCII字符
-            char_idx = int(avg_brightness / 255 * (len(ASCII_CHARS) - 1))
-            char_idx = max(0, min(len(ASCII_CHARS) - 1, char_idx))
+            # 合成器抖动影响（模式5无震荡）
+            brightness_jitter = avg_brightness
+            
+            # 映射到ASCII字符，合成器影响字符偏移
+            char_idx = int(brightness_jitter / 255 * (len(chars_to_use) - 1))
+            
+            # 模式5：添加位置随机偏移，让字符更多样（至少6种变化）
+            if synth is not None:
+                # 基于位置的随机偏移（保持一致性）
+                random_offset = int(phase_offsets[row, col] / (2 * np.pi) * 15)  # 0-14的偏移
+                # 添加行和列的额外偏移
+                row_col_offset = ((row * 3 + col * 7) % 10)
+                # 基于亮度分段添加额外变化（确保同一亮度也有多种字符）
+                brightness_segment = int(brightness_jitter / 42) % 6  # 分6段，每段不同偏移
+                # 合成器参数影响
+                char_idx = char_idx + char_offset + random_offset + row_col_offset + brightness_segment
+            
+            char_idx = max(0, min(len(chars_to_use) - 1, char_idx))
             
             # 蓝色渐变：根据亮度从深蓝到浅蓝
-            # 亮度低 = 深蓝，亮度高 = 浅蓝/白
-            blue_intensity = int(100 + avg_brightness * 0.6)  # 100-253
-            green_intensity = int(50 + avg_brightness * 0.5)   # 50-177
-            red_intensity = int(20 + avg_brightness * 0.3)     # 20-98
-            blue_color = (blue_intensity, green_intensity, red_intensity)  # BGR
+            blue_val = int(80 + brightness_jitter * 0.68)
+            green_val = int(40 + brightness_jitter * 0.55)
+            red_val = int(10 + brightness_jitter * 0.35)
+            gradient_color = (blue_val, green_val, red_val)
             
             # 获取字符
-            char = ASCII_CHARS[char_idx]
+            char = chars_to_use[char_idx]
             
             # 计算绘制位置
             draw_x = x + x_start + char_size // 2
             draw_y = y + y_start + char_size
             
-            # 绘制蓝色渐变背景块
-            cv2.rectangle(overlay, (x + x_start, y + y_start), 
-                         (x + x_end, y + y_end), blue_color, -1)
-            
-            # 绘制ASCII字符（白色）
+            # 绘制ASCII字符
+            font_scale = char_size / 18 if synth is not None else char_size / 20
             cv2.putText(result, char, (draw_x, draw_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, char_size / 20, 
-                       (255, 255, 255), 1, cv2.LINE_AA)
-    
-    # 混合原图和蓝色渐变叠加层
-    cv2.addWeighted(overlay, 0.5, result, 0.5, 0, result)
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+                       gradient_color, 1, cv2.LINE_AA)
     
     return result
 
@@ -876,12 +965,12 @@ def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None):
     
     # 合成器模式特殊UI - 信息显示在顶部
     if current_mode == MODE_SYNTH and synth_params is not None:
-        freq, lfo_rate, lfo_depth, detune, lfo_type = synth_params
+        freq, lfo_rate, lfo_depth, detune, lfo_type, hue, sat, val = synth_params
         lfo_names = ['Sin', 'Sqr', 'Tri']
         # 在顶部右侧显示合成器参数
-        info_x = w - 280
-        cv2.putText(image, f'Freq:{int(freq)}Hz', (info_x, int(h * 0.035)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
-        cv2.putText(image, f'LFO:{lfo_rate:.1f}Hz {lfo_names[lfo_type]}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
+        info_x = w - 300
+        cv2.putText(image, f'Freq:{int(freq)}Hz Detune:{detune:.1f}', (info_x, int(h * 0.035)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
+        cv2.putText(image, f'LFO:{lfo_rate:.1f}Hz {lfo_names[lfo_type]} D:{lfo_depth:.2f}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
     
     # 底部UI
     cv2.rectangle(image, (0, int(h * 0.92)), (w, h), (0, 0, 0), -1)
@@ -913,15 +1002,41 @@ def main():
         print("Error: Cannot open camera")
         return
     
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    # 尝试设置高分辨率，然后获取摄像头实际支持的规格
+    # 先尝试常见的高分辨率
+    resolutions_to_try = [
+        (1920, 1080),
+        (1280, 720),
+        (640, 480),
+    ]
+    
+    for width, height in resolutions_to_try:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if actual_w >= width * 0.9:  # 如果实际分辨率接近目标
+            break
+    
     cap.set(cv2.CAP_PROP_FPS, 30)
     
+    # 获取摄像头实际规格
     actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    print(f"Camera resolution: {actual_w}x{actual_h}")
+    actual_fps = int(cap.get(cv2.CAP_PROP_FPS))
     
-    print("Starting... Press 'q' to quit")
+    print(f"Camera specs: {actual_w}x{actual_h} @ {actual_fps}fps")
+    
+    # 根据分辨率自动适配参数
+    global scale_factor
+    if actual_w >= 1280:
+        # 高分辨率：使用更大的处理区域
+        scale_factor = actual_w / 640
+        print(f"High resolution detected, scale factor: {scale_factor:.2f}")
+    else:
+        scale_factor = 1.0
+    
+    print("Starting... Press 'q' to quit or click X to close")
     
     prev_time = 0
     fps_smooth = 30
@@ -1001,24 +1116,22 @@ def main():
                 synth = AudioSynthesizer()
                 synth.start()
             
-            # 使用ASCII艺术作为背景
+            # 使用ASCII艺术作为背景（传入合成器影响字符）
             if contour is not None:
-                display_image = create_ascii_art(display_image, contour, mask)
-                
-                # 应用手势控制合成器
+                # 先更新合成器参数
                 x, y, cw, ch = cv2.boundingRect(contour)
-                hand_y = y / h  # 归一化Y位置
-                hand_x = x / w  # 归一化X位置
-                hand_area = cw * ch  # 手的面积
+                hand_y = y / h
+                hand_x = x / w
+                hand_area = cw * ch
                 
-                # 提取颜色用于合成器
                 new_colors = extract_8_dominant_colors(display_image)
-                
-                # 更新合成器参数
                 synth.update_from_gesture(hand_y, hand_area, hand_x, new_colors, finger_count)
                 
+                # 然后创建受合成器影响的ASCII艺术
+                display_image = create_ascii_art(display_image, contour, mask, synth)
+                
                 # 显示参数
-                synth_params = (synth.frequency, synth.lfo_rate, synth.lfo_depth, synth.detune, synth.lfo_type)
+                synth_params = (synth.frequency, synth.lfo_rate, synth.lfo_depth, synth.detune, synth.lfo_type, synth.color_hue, synth.color_sat, synth.envelope_target)
             else:
                 # 没有检测到手时，降低音量
                 if synth is not None:
@@ -1040,8 +1153,12 @@ def main():
         
         cv2.imshow('Hand Gesture Recognition', display_image)
         
+        # 检查窗口是否被关闭（点击叉叉）
+        if cv2.getWindowProperty('Hand Gesture Recognition', cv2.WND_PROP_VISIBLE) < 1:
+            break
+        
         key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
+        if key == ord('q') or key == ord('x'):
             break
         elif key == ord('1'):
             current_mode = MODE_MOUSE

@@ -46,7 +46,7 @@ except ImportError:
 MODE_GESTURE = 0
 MODE_ASCII = 1
 MODE_COLOR = 2
-MODE_COLOR_16 = 3
+MODE_SYNTH = 3
 current_mode = MODE_GESTURE
 
 gesture_history = deque(maxlen=5)
@@ -56,6 +56,10 @@ hand_size_history = deque(maxlen=3)
 last_valid_contour = None
 last_valid_time = 0
 
+cube_rotation = [0, 0]
+cube_scale = 1.0
+cube_auto_rotate = True
+
 ASCII_CHARS = " .',:;ilI1|\\/()[]{}?_-+~=<>!@#$%&*#"
 ASCII_COLORS = [
     (50, 50, 50), (70, 70, 70), (90, 90, 90), (110, 110, 110),
@@ -63,6 +67,45 @@ ASCII_COLORS = [
     (210, 210, 210), (230, 230, 230), (255, 255, 255), (255, 255, 150),
     (255, 230, 100), (255, 200, 50),
 ]
+
+class SimpleSynth:
+    def __init__(self):
+        self.frequency = 440.0
+        self.lfo_rate = 1.0
+        self.lfo_depth = 0.3
+        self.detune = 0.0
+        self.lfo_type = 0
+        self.color_hue = 0.0
+        self.color_sat = 0.0
+        self.envelope_target = 0.0
+        self.volume = 0.4
+    
+    def update_from_gesture(self, hand_y, hand_area, hand_x, colors, finger_count=0):
+        self.frequency = 80 + (1.0 - hand_y) * 700
+        self.lfo_depth = min(0.6, hand_area * 0.0008)
+        self.envelope_target = min(1.0, hand_area * 0.0015)
+        self.lfo_rate = 0.3 + hand_x * 4.0
+        self.detune = finger_count * 2.0
+        self.lfo_type = finger_count % 3
+        
+        if colors is not None and len(colors) > 0:
+            main_color = colors[0]
+            r, g, b = main_color[0] / 255.0, main_color[1] / 255.0, main_color[2] / 255.0
+            max_c = max(r, g, b)
+            min_c = min(r, g, b)
+            delta = max_c - min_c
+            if delta == 0:
+                hue = 0
+            elif max_c == r:
+                hue = 60 * (((g - b) / delta) % 6)
+            elif max_c == g:
+                hue = 60 * (((b - r) / delta) + 2)
+            else:
+                hue = 60 * (((r - g) / delta) + 4)
+            saturation = delta / max_c if max_c > 0 else 0
+            self.color_sat = saturation
+            self.lfo_depth = min(0.7, self.lfo_depth + saturation * 0.2)
+            self.color_hue = hue / 360.0
 
 def smooth_gesture(gesture_name):
     if gesture_name:
@@ -263,35 +306,18 @@ def extract_8_dominant_colors(image):
     sorted_centers = centers[sorted_indices]
     return sorted_centers
 
-def extract_16_dominant_colors(image):
-    h, w = image.shape[:2]
-    small = cv2.resize(image, (w // 8, h // 8))
-    rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-    pixels = rgb.reshape(-1, 3)
-    if len(pixels) > 800:
-        indices = np.random.choice(len(pixels), 800, replace=False)
-        pixels = pixels[indices]
-    pixels = np.float32(pixels)
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 12, 3.0)
-    _, labels, centers = cv2.kmeans(pixels, 16, None, criteria, 1, cv2.KMEANS_RANDOM_CENTERS)
-    unique, counts = np.unique(labels, return_counts=True)
-    sorted_indices = np.argsort(-counts)
-    centers = np.uint8(centers)
-    sorted_centers = centers[sorted_indices]
-    return sorted_centers
-
-def smooth_color_centers(new_centers, history, num_colors=8):
+def smooth_color_centers(new_centers, history):
     if not history:
         return new_centers
     history_array = np.array(list(history), dtype=np.float32)
     new_array = np.array(new_centers, dtype=np.float32)
     smoothed = np.zeros_like(new_array)
-    for i in range(num_colors):
+    for i in range(8):
         current = new_array[i]
         min_dist = float('inf')
         best_match = current.copy()
         for hist in history_array:
-            for j in range(num_colors):
+            for j in range(8):
                 dist = np.sum((hist[j] - current) ** 2)
                 if dist < min_dist:
                     min_dist = dist
@@ -302,9 +328,9 @@ def smooth_color_centers(new_centers, history, num_colors=8):
             smoothed[i] = current
     return np.uint8(smoothed)
 
-def create_color_palette(centers, num_colors=8):
+def create_soft_color_palette(centers):
     palette = []
-    factors = [0.30, 0.42, 0.54, 0.66, 0.78, 0.90, 1.02, 1.15] if num_colors == 8 else [0.35, 0.50, 0.65, 0.80, 0.95, 1.10]
+    factors = [0.30, 0.42, 0.54, 0.66, 0.78, 0.90, 1.02, 1.15]
     for color in centers:
         r, g, b = color
         luminance = 0.299 * r + 0.587 * g + 0.114 * b
@@ -337,9 +363,9 @@ def create_color_palette(centers, num_colors=8):
             palette.append((new_b, new_g, new_r))
     return palette
 
-def apply_color_mapping(image, centers, num_colors=8):
+def apply_soft_color_mapping_fast(image, centers):
     h, w = image.shape[:2]
-    palette = create_color_palette(centers, num_colors)
+    palette = create_soft_color_palette(centers)
     palette = np.array(palette, dtype=np.uint8)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32)
@@ -349,10 +375,9 @@ def apply_color_mapping(image, centers, num_colors=8):
     distances = np.sum(diff ** 2, axis=2)
     color_indices = np.argmin(distances, axis=1)
     gray_flat = gray.reshape(-1).astype(np.float32)
-    num_levels = 8 if num_colors == 8 else 6
-    levels = (gray_flat / 255 * (num_levels - 1)).astype(np.int32)
-    levels = np.clip(levels, 0, num_levels - 1)
-    palette_indices = color_indices * num_levels + levels
+    levels = (gray_flat / 255 * 7).astype(np.int32)
+    levels = np.clip(levels, 0, 7)
+    palette_indices = color_indices * 8 + levels
     result_flat = palette[palette_indices]
     result = result_flat.reshape(h, w, 3)
     result = cv2.GaussianBlur(result, (3, 3), 0.5)
@@ -362,7 +387,7 @@ def apply_color_mapping(image, centers, num_colors=8):
     result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
     return result
 
-def create_ascii_art(image, contour, mask):
+def create_ascii_art(image, contour, mask, synth=None):
     if contour is None:
         return image
     h, w = image.shape[:2]
@@ -375,12 +400,28 @@ def create_ascii_art(image, contour, mask):
     hand_region = image[y:y+ch, x:x+cw].copy()
     mask_region = mask[y:y+ch, x:x+cw]
     gray = cv2.cvtColor(hand_region, cv2.COLOR_BGR2GRAY)
-    char_size = max(6, min(12, cw // 20))
+    
+    base_char_size = max(10, min(16, cw // 18))
+    if synth is not None:
+        freq_factor = 1.0 - (synth.frequency - 80) / 700 * 0.4
+        char_size = int(base_char_size * freq_factor)
+        char_size = max(8, min(20, char_size))
+        jitter_freq = synth.lfo_rate * 0.8
+        char_offset = int(synth.envelope_target * 15)
+    else:
+        char_size = base_char_size
+        jitter_freq = 0
+        char_offset = 0
+    
     ascii_h = ch // char_size
     ascii_w = cw // char_size
     if ascii_h < 3 or ascii_w < 3:
         return image
     result = image.copy()
+    current_time = time.time()
+    np.random.seed(42)
+    phase_offsets = np.random.random((ascii_h, ascii_w)) * 2 * np.pi
+    
     for row in range(ascii_h):
         for col in range(ascii_w):
             y_start = row * char_size
@@ -394,16 +435,37 @@ def create_ascii_art(image, contour, mask):
             if block.size == 0:
                 continue
             avg_brightness = np.mean(block)
-            char_idx = int(avg_brightness / 255 * (len(ASCII_CHARS) - 1))
-            char_idx = max(0, min(len(ASCII_CHARS) - 1, char_idx))
-            color_idx = min(char_idx, len(ASCII_COLORS) - 1)
+            
+            if synth is not None and jitter_freq > 0:
+                random_phase = phase_offsets[row, col]
+                jitter = np.sin(current_time * jitter_freq * 2 * np.pi + random_phase) * synth.lfo_depth * 50
+                brightness_jitter = avg_brightness + jitter
+                brightness_jitter = max(0, min(255, brightness_jitter))
+            else:
+                brightness_jitter = avg_brightness
+            
+            char_idx = int(brightness_jitter / 255 * (len(ASCII_CHARS) - 1))
+            char_idx = max(0, min(len(ASCII_CHARS) - 1, char_idx + char_offset))
+            
+            green_val = int(60 + brightness_jitter * 0.75)
+            blue_val = int(20 + brightness_jitter * 0.25)
+            red_val = int(10 + brightness_jitter * 0.20)
+            gradient_color = (blue_val, green_val, red_val)
+            
             char = ASCII_CHARS[char_idx]
-            color = ASCII_COLORS[color_idx]
             draw_x = x + x_start + char_size // 2
             draw_y = y + y_start + char_size
+            
+            if synth is not None and jitter_freq > 0:
+                random_phase = phase_offsets[row, col]
+                pos_jitter_x = np.sin(current_time * jitter_freq * np.pi + random_phase) * synth.lfo_depth * 8
+                pos_jitter_y = np.cos(current_time * jitter_freq * np.pi + random_phase * 0.7) * synth.lfo_depth * 8
+                draw_x = int(draw_x + pos_jitter_x)
+                draw_y = int(draw_y + pos_jitter_y)
+            
             cv2.putText(result, char, (draw_x, draw_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, char_size / 15, 
-                       color, 1, cv2.LINE_AA)
+                       cv2.FONT_HERSHEY_SIMPLEX, char_size / 14, 
+                       gradient_color, 1, cv2.LINE_AA)
     return result
 
 
@@ -412,8 +474,7 @@ class HandGestureApp(App):
         self.current_mode = MODE_GESTURE
         self.color_centers = None
         self.color_history = deque(maxlen=10)
-        self.color_centers_16 = None
-        self.color_history_16 = deque(maxlen=10)
+        self.synth = SimpleSynth()
         self.fps_smooth = 30
         self.prev_time = time.time()
         
@@ -432,13 +493,13 @@ class HandGestureApp(App):
         self.btn_ascii.bind(on_press=lambda x: self.set_mode(MODE_ASCII))
         btn_layout.add_widget(self.btn_ascii)
         
-        self.btn_color = ToggleButton(text='8色', group='mode')
+        self.btn_color = ToggleButton(text='调色板', group='mode')
         self.btn_color.bind(on_press=lambda x: self.set_mode(MODE_COLOR))
         btn_layout.add_widget(self.btn_color)
         
-        self.btn_color_16 = ToggleButton(text='16色', group='mode')
-        self.btn_color_16.bind(on_press=lambda x: self.set_mode(MODE_COLOR_16))
-        btn_layout.add_widget(self.btn_color_16)
+        self.btn_synth = ToggleButton(text='合成器', group='mode')
+        self.btn_synth.bind(on_press=lambda x: self.set_mode(MODE_SYNTH))
+        btn_layout.add_widget(self.btn_synth)
         
         btn_reset = Button(text='重置')
         btn_reset.bind(on_press=self.reset_history)
@@ -458,8 +519,6 @@ class HandGestureApp(App):
         self.current_mode = mode
         if mode == MODE_COLOR:
             self.color_centers = None
-        elif mode == MODE_COLOR_16:
-            self.color_centers_16 = None
     
     def reset_history(self, instance):
         global gesture_history, hand_position_history, hand_size_history
@@ -480,6 +539,7 @@ class HandGestureApp(App):
         gesture_name, finger_count = recognize_gesture(contour, defects)
         
         display_image = frame.copy()
+        synth_params = None
         
         if contour is not None:
             if self.current_mode == MODE_GESTURE:
@@ -495,15 +555,20 @@ class HandGestureApp(App):
         
         if self.current_mode == MODE_COLOR:
             new_colors = extract_8_dominant_colors(display_image)
-            self.color_centers = smooth_color_centers(new_colors, self.color_history, 8)
+            self.color_centers = smooth_color_centers(new_colors, self.color_history)
             self.color_history.append(self.color_centers.copy())
-            display_image = apply_color_mapping(display_image, self.color_centers, 8)
+            display_image = apply_soft_color_mapping_fast(display_image, self.color_centers)
         
-        if self.current_mode == MODE_COLOR_16:
-            new_colors_16 = extract_16_dominant_colors(display_image)
-            self.color_centers_16 = smooth_color_centers(new_colors_16, self.color_history_16, 16)
-            self.color_history_16.append(self.color_centers_16.copy())
-            display_image = apply_color_mapping(display_image, self.color_centers_16, 16)
+        if self.current_mode == MODE_SYNTH and contour is not None:
+            x, y, cw, ch = cv2.boundingRect(contour)
+            hand_y = y / h
+            hand_x = x / w
+            hand_area = cw * ch
+            new_colors = extract_8_dominant_colors(display_image)
+            self.synth.update_from_gesture(hand_y, hand_area, hand_x, new_colors, finger_count)
+            display_image = create_ascii_art(display_image, contour, mask, self.synth)
+            synth_params = (self.synth.frequency, self.synth.lfo_rate, self.synth.lfo_depth, 
+                          self.synth.detune, self.synth.lfo_type)
         
         curr_time = time.time()
         frame_time = curr_time - self.prev_time
@@ -516,9 +581,15 @@ class HandGestureApp(App):
                    cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 255, 255), 2)
         
         mode_text = {MODE_GESTURE: 'Gesture', MODE_ASCII: 'ASCII', 
-                     MODE_COLOR: '8-Color', MODE_COLOR_16: '16-Color'}
+                     MODE_COLOR: 'Color', MODE_SYNTH: 'Synth'}
         cv2.putText(display_image, mode_text.get(self.current_mode, ''), (10, 60), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+        
+        if self.current_mode == MODE_SYNTH and synth_params:
+            freq, lfo_rate, lfo_depth, detune, lfo_type = synth_params
+            lfo_names = ['Sin', 'Sqr', 'Tri']
+            cv2.putText(display_image, f'Freq:{int(freq)}Hz LFO:{lfo_rate:.1f}Hz {lfo_names[lfo_type]}', 
+                       (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 200, 100), 1)
         
         buf = cv2.flip(display_image, 0)
         buf = buf.tostring()
