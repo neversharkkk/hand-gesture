@@ -34,14 +34,14 @@ jobs:
           git zip unzip openjdk-17-jdk \
           autoconf libtool pkg-config \
           zlib1g-dev libncurses5-dev \
-          libncursesw5-dev libtinfo5 \
+          libncursesw5-dev \
           cmake libffi-dev libssl-dev \
           automake wget patchelf \
           libltdl-dev libgmp-dev \
           libmpfr-dev libmpc-dev \
           libisl-dev bison flex \
           texinfo gettext \
-          xclip xsel
+          xclip xsel libtinfo-dev
     
     - name: Install Python dependencies
       run: |

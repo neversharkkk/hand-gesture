@@ -566,7 +566,7 @@ ASCII_COLORS = [
 ]
 
 def create_ascii_art(image, contour, mask):
-    """在检测到的手部区域创建ASCII艺术效果"""
+    """在检测到的手部区域创建ASCII艺术效果，带蓝色渐变叠加"""
     if contour is None:
         return image
     
@@ -589,8 +589,8 @@ def create_ascii_art(image, contour, mask):
     # 转换为灰度图
     gray = cv2.cvtColor(hand_region, cv2.COLOR_BGR2GRAY)
     
-    # 计算ASCII字符大小
-    char_size = max(6, min(12, cw // 20))
+    # 计算ASCII字符大小（缩小）
+    char_size = max(4, min(8, cw // 30))
     
     # 创建ASCII艺术图像
     ascii_h = ch // char_size
@@ -601,6 +601,9 @@ def create_ascii_art(image, contour, mask):
     
     # 创建输出图像
     result = image.copy()
+    
+    # 创建蓝色渐变叠加层
+    overlay = result.copy()
     
     # 在手部区域绘制ASCII字符
     for row in range(ascii_h):
@@ -627,20 +630,32 @@ def create_ascii_art(image, contour, mask):
             # 映射到ASCII字符
             char_idx = int(avg_brightness / 255 * (len(ASCII_CHARS) - 1))
             char_idx = max(0, min(len(ASCII_CHARS) - 1, char_idx))
-            color_idx = min(char_idx, len(ASCII_COLORS) - 1)
             
-            # 获取字符和颜色
+            # 蓝色渐变：根据亮度从深蓝到浅蓝
+            # 亮度低 = 深蓝，亮度高 = 浅蓝/白
+            blue_intensity = int(100 + avg_brightness * 0.6)  # 100-253
+            green_intensity = int(50 + avg_brightness * 0.5)   # 50-177
+            red_intensity = int(20 + avg_brightness * 0.3)     # 20-98
+            blue_color = (blue_intensity, green_intensity, red_intensity)  # BGR
+            
+            # 获取字符
             char = ASCII_CHARS[char_idx]
-            color = ASCII_COLORS[color_idx]
             
             # 计算绘制位置
             draw_x = x + x_start + char_size // 2
             draw_y = y + y_start + char_size
             
-            # 绘制ASCII字符
+            # 绘制蓝色渐变背景块
+            cv2.rectangle(overlay, (x + x_start, y + y_start), 
+                         (x + x_end, y + y_end), blue_color, -1)
+            
+            # 绘制ASCII字符（白色）
             cv2.putText(result, char, (draw_x, draw_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, char_size / 15, 
-                       color, 1, cv2.LINE_AA)
+                       cv2.FONT_HERSHEY_SIMPLEX, char_size / 20, 
+                       (255, 255, 255), 1, cv2.LINE_AA)
+    
+    # 混合原图和蓝色渐变叠加层
+    cv2.addWeighted(overlay, 0.5, result, 0.5, 0, result)
     
     return result
 
@@ -1001,10 +1016,6 @@ def main():
                 
                 # 更新合成器参数
                 synth.update_from_gesture(hand_y, hand_area, hand_x, new_colors, finger_count)
-                
-                # 绘制频率指示线
-                freq_y = int((1.0 - hand_y) * h)
-                cv2.line(display_image, (0, freq_y), (w, freq_y), (100, 100, 255), 2)
                 
                 # 显示参数
                 synth_params = (synth.frequency, synth.lfo_rate, synth.lfo_depth, synth.detune, synth.lfo_type)
