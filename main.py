@@ -246,31 +246,45 @@ class AdvancedSampler:
         
         # 音阶定义（五声音阶 + 自然音阶，美妙动听）
         self.scales = {
-            'pentatonic': [0, 2, 4, 7, 9],  # 五声音阶（中国风）
-            'major': [0, 2, 4, 5, 7, 9, 11],  # 大调（明亮）
-            'minor': [0, 2, 3, 5, 7, 8, 10],  # 小调（忧郁）
-            'dorian': [0, 2, 3, 5, 7, 9, 10],  # 多利亚（爵士）
-            'mixolydian': [0, 2, 4, 5, 7, 9, 10],  # 混合利底亚（先锋）
+            'pentatonic': [0, 2, 4, 7, 9],
+            'major': [0, 2, 4, 5, 7, 9, 11],
+            'minor': [0, 2, 3, 5, 7, 8, 10],
+            'dorian': [0, 2, 3, 5, 7, 9, 10],
+            'mixolydian': [0, 2, 4, 5, 7, 9, 10],
         }
         
-        # 音色库定义
+        # 音色库定义（更多参数）
         self.instruments = {
-            'piano': {'attack': 0.01, 'decay': 0.3, 'sustain': 0.4, 'release': 0.5, 'bright': 0.8},
-            'pad': {'attack': 0.3, 'decay': 0.2, 'sustain': 0.7, 'release': 1.0, 'bright': 0.3},
-            'bell': {'attack': 0.001, 'decay': 0.5, 'sustain': 0.1, 'release': 0.8, 'bright': 1.0},
-            'string': {'attack': 0.1, 'decay': 0.2, 'sustain': 0.8, 'release': 0.4, 'bright': 0.5},
-            'synth': {'attack': 0.05, 'decay': 0.1, 'sustain': 0.6, 'release': 0.3, 'bright': 0.7},
-            'bass': {'attack': 0.01, 'decay': 0.2, 'sustain': 0.5, 'release': 0.2, 'bright': 0.2},
+            'piano': {'attack': 0.005, 'decay': 0.3, 'sustain': 0.4, 'release': 0.5, 'bright': 0.8, 'harm': [1, 0.5, 0.25, 0.125]},
+            'pad': {'attack': 0.3, 'decay': 0.2, 'sustain': 0.8, 'release': 1.2, 'bright': 0.3, 'harm': [1, 0.7, 0.5, 0.3]},
+            'bell': {'attack': 0.001, 'decay': 0.8, 'sustain': 0.1, 'release': 1.0, 'bright': 1.0, 'harm': [1, 0.6, 0.3, 0.15]},
+            'string': {'attack': 0.15, 'decay': 0.2, 'sustain': 0.85, 'release': 0.5, 'bright': 0.5, 'harm': [1, 0.4, 0.2, 0.1]},
+            'synth': {'attack': 0.02, 'decay': 0.1, 'sustain': 0.7, 'release': 0.3, 'bright': 0.7, 'harm': [1, 0.8, 0.4, 0.2]},
+            'bass': {'attack': 0.005, 'decay': 0.15, 'sustain': 0.6, 'release': 0.2, 'bright': 0.2, 'harm': [1, 0.3, 0.1, 0.05]},
         }
         
         # 当前状态
-        self.base_note = 60  # MIDI音符 (C4)
+        self.base_note = 60
         self.current_scale = 'pentatonic'
         self.current_instrument = 'piano'
-        self.tempo = 120  # BPM
+        self.tempo = 120
         self.num_instruments = 1
         self.melody_index = 0
         self.beat_phase = 0.0
+        
+        # 多通道
+        self.num_channels = 4  # 旋律、和声、低音、鼓
+        self.channel_volumes = [0.4, 0.25, 0.2, 0.15]
+        
+        # 鼓点参数
+        self.drum_pattern = [1, 0, 0, 1, 0, 0, 1, 0]  # 8步节奏
+        self.drum_index = 0
+        self.kick_phase = 0.0
+        self.snare_phase = 0.0
+        self.hihat_phase = 0.0
+        self.kick_env = 0.0
+        self.snare_env = 0.0
+        self.hihat_env = 0.0
         
         # 音色参数
         self.brightness = 0.5
@@ -281,19 +295,27 @@ class AdvancedSampler:
         self.color_mood = 'neutral'
         self.color_energy = 0.5
         
-        # 振荡器状态
-        self.phases = [0.0] * 8
-        self.envelopes = [0.0] * 8
-        self.note_frequencies = [440.0] * 8
-        self.note_active = [False] * 8
+        # 振荡器状态（扩展到更多通道）
+        self.phases = [0.0] * 16
+        self.envelopes = [0.0] * 16
+        self.note_frequencies = [440.0] * 16
+        self.note_active = [False] * 16
         
-        # 效果
-        self.reverb_buffer = np.zeros(int(sample_rate * 2))
-        self.reverb_index = 0
-        self.delay_buffer = np.zeros(int(sample_rate * 0.5))
+        # 低通滤波器状态
+        self.filter_state = [0.0] * 16
+        self.filter_cutoff = 2000.0
+        
+        # 效果缓冲（更大更好的混响）
+        self.reverb_buffers = [
+            np.zeros(int(sample_rate * 0.5)),
+            np.zeros(int(sample_rate * 0.7)),
+            np.zeros(int(sample_rate * 0.3)),
+        ]
+        self.reverb_indices = [0, 0, 0]
+        self.delay_buffer = np.zeros(int(sample_rate * 0.4))
         self.delay_index = 0
         
-        self.volume = 0.3
+        self.volume = 0.35
         
     def start(self):
         self.running = True
@@ -318,50 +340,81 @@ class AdvancedSampler:
             print("sounddevice not installed, audio disabled")
             self.running = False
     
-    def _generate_note(self, note_idx):
-        """生成单个音符的波形"""
+    def _generate_kick(self):
+        """生成底鼓"""
+        output = np.zeros(self.buffer_size)
+        if self.kick_env > 0.01:
+            for i in range(self.buffer_size):
+                # 频率下降的正弦波
+                freq = 150 * np.exp(-self.kick_phase * 10) + 40
+                output[i] = np.sin(self.kick_phase * 2 * np.pi * freq / self.sample_rate)
+                self.kick_phase += 1
+                self.kick_env *= 0.995
+        return output * self.kick_env * 0.8
+    
+    def _generate_snare(self):
+        """生成军鼓"""
+        output = np.zeros(self.buffer_size)
+        if self.snare_env > 0.01:
+            for i in range(self.buffer_size):
+                # 正弦波 + 噪声
+                tone = np.sin(self.snare_phase * 2 * np.pi * 200 / self.sample_rate)
+                noise = np.random.uniform(-1, 1) * 0.5
+                output[i] = (tone * 0.6 + noise * 0.4)
+                self.snare_phase += 1
+                self.snare_env *= 0.99
+        return output * self.snare_env * 0.5
+    
+    def _generate_hihat(self):
+        """生成踩镲"""
+        output = np.zeros(self.buffer_size)
+        if self.hihat_env > 0.01:
+            for i in range(self.buffer_size):
+                # 高频噪声
+                noise = np.random.uniform(-1, 1)
+                # 高通滤波效果
+                output[i] = noise * 0.8
+                self.hihat_env *= 0.985
+        return output * self.hihat_env * 0.3
+    
+    def _generate_note(self, note_idx, instrument=None):
+        """生成单个音符的波形（改进音质）"""
         freq = self.note_frequencies[note_idx]
         phase = self.phases[note_idx]
         env = self.envelopes[note_idx]
-        inst = self.instruments[self.current_instrument]
         
-        # 基础波形
-        t = np.arange(self.buffer_size) / self.sample_rate
+        if instrument is None:
+            instrument = self.current_instrument
+        inst = self.instruments.get(instrument, self.instruments['piano'])
         
-        # 相位增量
         phase_inc = 2 * np.pi * freq / self.sample_rate
+        
+        # 使用泛音序列生成更丰富的音色
+        harmonics = inst.get('harm', [1, 0.5, 0.25, 0.125])
+        wave = np.zeros(self.buffer_size)
+        
+        for h, amp in enumerate(harmonics, 1):
+            # 添加轻微失谐增加丰富度
+            detune = 1.0 + (h - 1) * 0.001
+            wave += amp * np.sin((phase + phase_inc * np.arange(self.buffer_size)) * h * detune)
+        
+        # 添加次谐波增加温暖感
+        wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 0.5) * 0.15 * self.warmth
+        
+        # 应用低通滤波器使声音更柔和
+        alpha = 0.3
+        for i in range(len(wave)):
+            self.filter_state[note_idx] = alpha * wave[i] + (1 - alpha) * self.filter_state[note_idx]
+            wave[i] = self.filter_state[note_idx]
+        
+        # 更新相位
         self.phases[note_idx] = phase + phase_inc * self.buffer_size
         
-        # 根据音色生成波形
-        if self.current_instrument == 'piano':
-            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 2) * 0.5 * self.brightness
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 3) * 0.25
-        elif self.current_instrument == 'bell':
-            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 2.4) * 0.6
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 5.95) * 0.3
-        elif self.current_instrument == 'pad':
-            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 1.002) * 0.5  # 轻微失谐
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 0.998) * 0.5
-        elif self.current_instrument == 'string':
-            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 2) * 0.3
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 3) * 0.2
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 4) * 0.1
-        elif self.current_instrument == 'synth':
-            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 0.5) * 0.7  # 次谐波
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 2) * self.brightness
-        else:  # bass
-            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
-            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 0.5) * 0.8
+        # 应用包络衰减
+        decay_rate = 0.9995 if inst['sustain'] > 0.5 else 0.999
+        self.envelopes[note_idx] *= decay_rate
         
-        # 应用包络
-        wave = wave * env * self.volume
-        
-        return wave
+        return wave * env * self.volume
     
     def _audio_callback(self, outdata, frames, time_info, status):
         """音频回调函数"""
@@ -376,31 +429,46 @@ class AdvancedSampler:
         if self.beat_phase >= 1.0:
             self.beat_phase -= 1.0
             self._trigger_next_notes()
+            self._trigger_drums()
         
-        # 生成所有活动音符
-        for i in range(self.num_instruments):
+        # 生成旋律通道
+        for i in range(min(self.num_instruments, 4)):
             if self.note_active[i]:
                 note_wave = self._generate_note(i)
-                output += note_wave * (1.0 / self.num_instruments)
-                
-                # 更新包络
-                inst = self.instruments[self.current_instrument]
-                if self.envelopes[i] < 0.01:
-                    self.note_active[i] = False
+                output += note_wave * self.channel_volumes[0] / self.num_instruments
         
-        # 应用混响
-        reverb_delay = int(self.sample_rate * 0.3 * self.space)
-        for i in range(frames):
-            rev_idx = (self.reverb_index - reverb_delay + i) % len(self.reverb_buffer)
-            output[i] += self.reverb_buffer[rev_idx] * 0.3 * self.space
-            self.reverb_buffer[self.reverb_index] = output[i]
-            self.reverb_index = (self.reverb_index + 1) % len(self.reverb_buffer)
+        # 生成和声通道
+        if self.num_instruments >= 2:
+            for i in range(4, 6):
+                if self.note_active[i]:
+                    note_wave = self._generate_note(i, 'pad')
+                    output += note_wave * self.channel_volumes[1]
+        
+        # 生成低音通道
+        if self.num_instruments >= 3:
+            if self.note_active[8]:
+                note_wave = self._generate_note(8, 'bass')
+                output += note_wave * self.channel_volumes[2]
+        
+        # 生成鼓点
+        output += self._generate_kick() * self.channel_volumes[3]
+        output += self._generate_snare() * self.channel_volumes[3] * 0.7
+        output += self._generate_hihat() * self.channel_volumes[3] * 0.5
+        
+        # 应用多层混响
+        for buf_idx, reverb_buf in enumerate(self.reverb_buffers):
+            delay = int(len(reverb_buf) * (0.3 + buf_idx * 0.1))
+            for i in range(frames):
+                rev_idx = (self.reverb_indices[buf_idx] - delay + i) % len(reverb_buf)
+                output[i] += reverb_buf[rev_idx] * 0.15 * self.space
+                reverb_buf[self.reverb_indices[buf_idx]] = output[i]
+            self.reverb_indices[buf_idx] = (self.reverb_indices[buf_idx] + 1) % len(reverb_buf)
         
         # 应用延迟
-        delay_samples = int(self.sample_rate * 0.25)
+        delay_samples = int(self.sample_rate * 0.3)
         for i in range(frames):
             del_idx = (self.delay_index - delay_samples + i) % len(self.delay_buffer)
-            output[i] += self.delay_buffer[del_idx] * 0.2
+            output[i] += self.delay_buffer[del_idx] * 0.15
             self.delay_buffer[self.delay_index] = output[i]
             self.delay_index = (self.delay_index + 1) % len(self.delay_buffer)
         
@@ -410,31 +478,64 @@ class AdvancedSampler:
         """触发下一组音符"""
         scale = self.scales[self.current_scale]
         
-        for i in range(self.num_instruments):
-            # 生成旋律（基于音阶）
+        # 旋律
+        for i in range(min(self.num_instruments, 4)):
             melody_offset = (self.melody_index + i * 2) % len(scale)
             octave = (self.melody_index // len(scale)) % 2
-            
             note = self.base_note + scale[melody_offset] + octave * 12
             self.note_frequencies[i] = 440.0 * (2.0 ** ((note - 69) / 12.0))
             self.note_active[i] = True
-            
-            # 设置包络
-            inst = self.instruments[self.current_instrument]
             self.envelopes[i] = 1.0
         
+        # 和声（三度音程）
+        if self.num_instruments >= 2:
+            for i in range(4, 6):
+                harmony_offset = (self.melody_index + (i - 4) * 2 + 2) % len(scale)
+                note = self.base_note + scale[harmony_offset] - 12
+                self.note_frequencies[i] = 440.0 * (2.0 ** ((note - 69) / 12.0))
+                self.note_active[i] = True
+                self.envelopes[i] = 0.7
+        
+        # 低音
+        if self.num_instruments >= 3:
+            bass_note = self.base_note - 24 + scale[self.melody_index % len(scale)]
+            self.note_frequencies[8] = 440.0 * (2.0 ** ((bass_note - 69) / 12.0))
+            self.note_active[8] = True
+            self.envelopes[8] = 0.9
+        
         self.melody_index = (self.melody_index + 1) % (len(scale) * 4)
+    
+    def _trigger_drums(self):
+        """触发鼓点"""
+        pattern_step = self.drum_index % len(self.drum_pattern)
+        
+        # 底鼓：第1和第5拍
+        if pattern_step in [0, 4]:
+            self.kick_env = 1.0
+            self.kick_phase = 0.0
+        
+        # 军鼓：第3和第7拍
+        if pattern_step in [2, 6]:
+            self.snare_env = 1.0
+            self.snare_phase = 0.0
+        
+        # 踩镲：每拍
+        if self.drum_pattern[pattern_step]:
+            self.hihat_env = 0.6
+            self.hihat_phase = 0.0
+        
+        self.drum_index += 1
     
     def update_from_gesture(self, hand_y, hand_x, hand_area, finger_count):
         """从手势更新采样器参数"""
         # 手的Y位置控制基础音高
         self.base_note = 48 + int((1.0 - hand_y) * 24)  # C3-C5
         
-        # 手的X位置控制节奏
-        self.tempo = 60 + int(hand_x * 120)  # 60-180 BPM
+        # 手的X位置控制节奏（更大范围）
+        self.tempo = 40 + int(hand_x * 180)  # 40-220 BPM
         
         # 手的面积控制乐器数量
-        self.num_instruments = max(1, min(4, int(hand_area / 15000) + 1))
+        self.num_instruments = max(1, min(4, int(hand_area / 12000) + 1))
         
         # 手指数量控制音阶
         scale_names = list(self.scales.keys())
@@ -445,7 +546,6 @@ class AdvancedSampler:
         if colors is None or len(colors) == 0:
             return
         
-        # 计算主色调的HSV
         main_color = colors[0]
         r, g, b = main_color[0] / 255.0, main_color[1] / 255.0, main_color[2] / 255.0
         
@@ -453,7 +553,6 @@ class AdvancedSampler:
         min_c = min(r, g, b)
         delta = max_c - min_c
         
-        # 计算色相
         if delta == 0:
             hue = 0
         elif max_c == r:
@@ -467,35 +566,30 @@ class AdvancedSampler:
         value = max_c
         
         # 根据色相选择音色
-        if hue < 30 or hue >= 330:  # 红色
+        if hue < 30 or hue >= 330:
             self.current_instrument = 'synth'
             self.color_mood = 'warm'
-        elif hue < 60:  # 橙色
+        elif hue < 60:
             self.current_instrument = 'bell'
             self.color_mood = 'bright'
-        elif hue < 90:  # 黄色
+        elif hue < 90:
             self.current_instrument = 'piano'
             self.color_mood = 'happy'
-        elif hue < 150:  # 绿色
+        elif hue < 150:
             self.current_instrument = 'string'
             self.color_mood = 'natural'
-        elif hue < 210:  # 青色
+        elif hue < 210:
             self.current_instrument = 'pad'
             self.color_mood = 'calm'
-        elif hue < 270:  # 蓝色
+        elif hue < 270:
             self.current_instrument = 'pad'
             self.color_mood = 'cool'
-        else:  # 紫色
+        else:
             self.current_instrument = 'bell'
             self.color_mood = 'mystic'
         
-        # 饱和度影响亮度
         self.brightness = 0.3 + saturation * 0.7
-        
-        # 明度影响空间感
         self.space = 0.1 + value * 0.5
-        
-        # 能量
         self.color_energy = saturation * value
 
 # 全局合成器实例
