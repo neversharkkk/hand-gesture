@@ -13,6 +13,7 @@ MODE_MOUSE = 1
 MODE_ASCII = 2
 MODE_COLOR = 3
 MODE_SYNTH = 4
+MODE_SAMPLER = 5
 current_mode = MODE_GESTURE
 
 gesture_history = deque(maxlen=5)
@@ -235,8 +236,271 @@ class AudioSynthesizer:
         # 延迟时间
         self.delay_time = 0.1 + hand_x * 0.3
 
+# 高级采样器类 - 多音色旋律生成
+class AdvancedSampler:
+    def __init__(self, sample_rate=44100, buffer_size=512):
+        self.sample_rate = sample_rate
+        self.buffer_size = buffer_size
+        self.running = False
+        self.thread = None
+        
+        # 音阶定义（五声音阶 + 自然音阶，美妙动听）
+        self.scales = {
+            'pentatonic': [0, 2, 4, 7, 9],  # 五声音阶（中国风）
+            'major': [0, 2, 4, 5, 7, 9, 11],  # 大调（明亮）
+            'minor': [0, 2, 3, 5, 7, 8, 10],  # 小调（忧郁）
+            'dorian': [0, 2, 3, 5, 7, 9, 10],  # 多利亚（爵士）
+            'mixolydian': [0, 2, 4, 5, 7, 9, 10],  # 混合利底亚（先锋）
+        }
+        
+        # 音色库定义
+        self.instruments = {
+            'piano': {'attack': 0.01, 'decay': 0.3, 'sustain': 0.4, 'release': 0.5, 'bright': 0.8},
+            'pad': {'attack': 0.3, 'decay': 0.2, 'sustain': 0.7, 'release': 1.0, 'bright': 0.3},
+            'bell': {'attack': 0.001, 'decay': 0.5, 'sustain': 0.1, 'release': 0.8, 'bright': 1.0},
+            'string': {'attack': 0.1, 'decay': 0.2, 'sustain': 0.8, 'release': 0.4, 'bright': 0.5},
+            'synth': {'attack': 0.05, 'decay': 0.1, 'sustain': 0.6, 'release': 0.3, 'bright': 0.7},
+            'bass': {'attack': 0.01, 'decay': 0.2, 'sustain': 0.5, 'release': 0.2, 'bright': 0.2},
+        }
+        
+        # 当前状态
+        self.base_note = 60  # MIDI音符 (C4)
+        self.current_scale = 'pentatonic'
+        self.current_instrument = 'piano'
+        self.tempo = 120  # BPM
+        self.num_instruments = 1
+        self.melody_index = 0
+        self.beat_phase = 0.0
+        
+        # 音色参数
+        self.brightness = 0.5
+        self.warmth = 0.5
+        self.space = 0.3
+        
+        # 颜色氛围
+        self.color_mood = 'neutral'
+        self.color_energy = 0.5
+        
+        # 振荡器状态
+        self.phases = [0.0] * 8
+        self.envelopes = [0.0] * 8
+        self.note_frequencies = [440.0] * 8
+        self.note_active = [False] * 8
+        
+        # 效果
+        self.reverb_buffer = np.zeros(int(sample_rate * 2))
+        self.reverb_index = 0
+        self.delay_buffer = np.zeros(int(sample_rate * 0.5))
+        self.delay_index = 0
+        
+        self.volume = 0.3
+        
+    def start(self):
+        self.running = True
+        self.thread = threading.Thread(target=self._audio_loop, daemon=True)
+        self.thread.start()
+    
+    def stop(self):
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=0.3)
+    
+    def _audio_loop(self):
+        try:
+            import sounddevice as sd
+            with sd.OutputStream(samplerate=self.sample_rate,
+                                channels=1,
+                                callback=self._audio_callback,
+                                blocksize=self.buffer_size):
+                while self.running:
+                    time.sleep(0.005)
+        except ImportError:
+            print("sounddevice not installed, audio disabled")
+            self.running = False
+    
+    def _generate_note(self, note_idx):
+        """生成单个音符的波形"""
+        freq = self.note_frequencies[note_idx]
+        phase = self.phases[note_idx]
+        env = self.envelopes[note_idx]
+        inst = self.instruments[self.current_instrument]
+        
+        # 基础波形
+        t = np.arange(self.buffer_size) / self.sample_rate
+        
+        # 相位增量
+        phase_inc = 2 * np.pi * freq / self.sample_rate
+        self.phases[note_idx] = phase + phase_inc * self.buffer_size
+        
+        # 根据音色生成波形
+        if self.current_instrument == 'piano':
+            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 2) * 0.5 * self.brightness
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 3) * 0.25
+        elif self.current_instrument == 'bell':
+            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 2.4) * 0.6
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 5.95) * 0.3
+        elif self.current_instrument == 'pad':
+            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 1.002) * 0.5  # 轻微失谐
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 0.998) * 0.5
+        elif self.current_instrument == 'string':
+            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 2) * 0.3
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 3) * 0.2
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 4) * 0.1
+        elif self.current_instrument == 'synth':
+            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 0.5) * 0.7  # 次谐波
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 2) * self.brightness
+        else:  # bass
+            wave = np.sin(phase + phase_inc * np.arange(self.buffer_size))
+            wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 0.5) * 0.8
+        
+        # 应用包络
+        wave = wave * env * self.volume
+        
+        return wave
+    
+    def _audio_callback(self, outdata, frames, time_info, status):
+        """音频回调函数"""
+        output = np.zeros(frames)
+        
+        # 更新节拍
+        beat_duration = 60.0 / self.tempo
+        beat_inc = self.buffer_size / self.sample_rate / beat_duration
+        self.beat_phase += beat_inc
+        
+        # 每拍触发新音符
+        if self.beat_phase >= 1.0:
+            self.beat_phase -= 1.0
+            self._trigger_next_notes()
+        
+        # 生成所有活动音符
+        for i in range(self.num_instruments):
+            if self.note_active[i]:
+                note_wave = self._generate_note(i)
+                output += note_wave * (1.0 / self.num_instruments)
+                
+                # 更新包络
+                inst = self.instruments[self.current_instrument]
+                if self.envelopes[i] < 0.01:
+                    self.note_active[i] = False
+        
+        # 应用混响
+        reverb_delay = int(self.sample_rate * 0.3 * self.space)
+        for i in range(frames):
+            rev_idx = (self.reverb_index - reverb_delay + i) % len(self.reverb_buffer)
+            output[i] += self.reverb_buffer[rev_idx] * 0.3 * self.space
+            self.reverb_buffer[self.reverb_index] = output[i]
+            self.reverb_index = (self.reverb_index + 1) % len(self.reverb_buffer)
+        
+        # 应用延迟
+        delay_samples = int(self.sample_rate * 0.25)
+        for i in range(frames):
+            del_idx = (self.delay_index - delay_samples + i) % len(self.delay_buffer)
+            output[i] += self.delay_buffer[del_idx] * 0.2
+            self.delay_buffer[self.delay_index] = output[i]
+            self.delay_index = (self.delay_index + 1) % len(self.delay_buffer)
+        
+        outdata[:, 0] = np.clip(output, -1, 1).astype(np.float32)
+    
+    def _trigger_next_notes(self):
+        """触发下一组音符"""
+        scale = self.scales[self.current_scale]
+        
+        for i in range(self.num_instruments):
+            # 生成旋律（基于音阶）
+            melody_offset = (self.melody_index + i * 2) % len(scale)
+            octave = (self.melody_index // len(scale)) % 2
+            
+            note = self.base_note + scale[melody_offset] + octave * 12
+            self.note_frequencies[i] = 440.0 * (2.0 ** ((note - 69) / 12.0))
+            self.note_active[i] = True
+            
+            # 设置包络
+            inst = self.instruments[self.current_instrument]
+            self.envelopes[i] = 1.0
+        
+        self.melody_index = (self.melody_index + 1) % (len(scale) * 4)
+    
+    def update_from_gesture(self, hand_y, hand_x, hand_area, finger_count):
+        """从手势更新采样器参数"""
+        # 手的Y位置控制基础音高
+        self.base_note = 48 + int((1.0 - hand_y) * 24)  # C3-C5
+        
+        # 手的X位置控制节奏
+        self.tempo = 60 + int(hand_x * 120)  # 60-180 BPM
+        
+        # 手的面积控制乐器数量
+        self.num_instruments = max(1, min(4, int(hand_area / 15000) + 1))
+        
+        # 手指数量控制音阶
+        scale_names = list(self.scales.keys())
+        self.current_scale = scale_names[finger_count % len(scale_names)]
+    
+    def update_from_color(self, colors):
+        """从颜色更新音色"""
+        if colors is None or len(colors) == 0:
+            return
+        
+        # 计算主色调的HSV
+        main_color = colors[0]
+        r, g, b = main_color[0] / 255.0, main_color[1] / 255.0, main_color[2] / 255.0
+        
+        max_c = max(r, g, b)
+        min_c = min(r, g, b)
+        delta = max_c - min_c
+        
+        # 计算色相
+        if delta == 0:
+            hue = 0
+        elif max_c == r:
+            hue = 60 * (((g - b) / delta) % 6)
+        elif max_c == g:
+            hue = 60 * (((b - r) / delta) + 2)
+        else:
+            hue = 60 * (((r - g) / delta) + 4)
+        
+        saturation = delta / max_c if max_c > 0 else 0
+        value = max_c
+        
+        # 根据色相选择音色
+        if hue < 30 or hue >= 330:  # 红色
+            self.current_instrument = 'synth'
+            self.color_mood = 'warm'
+        elif hue < 60:  # 橙色
+            self.current_instrument = 'bell'
+            self.color_mood = 'bright'
+        elif hue < 90:  # 黄色
+            self.current_instrument = 'piano'
+            self.color_mood = 'happy'
+        elif hue < 150:  # 绿色
+            self.current_instrument = 'string'
+            self.color_mood = 'natural'
+        elif hue < 210:  # 青色
+            self.current_instrument = 'pad'
+            self.color_mood = 'calm'
+        elif hue < 270:  # 蓝色
+            self.current_instrument = 'pad'
+            self.color_mood = 'cool'
+        else:  # 紫色
+            self.current_instrument = 'bell'
+            self.color_mood = 'mystic'
+        
+        # 饱和度影响亮度
+        self.brightness = 0.3 + saturation * 0.7
+        
+        # 明度影响空间感
+        self.space = 0.1 + value * 0.5
+        
+        # 能量
+        self.color_energy = saturation * value
+
 # 全局合成器实例
 synth = None
+sampler = None
 
 def smooth_gesture(gesture_name):
     if gesture_name:
@@ -603,7 +867,7 @@ def control_cube(gesture_name, finger_count, hand_center, w, h):
 
 # ASCII艺术字符集（按亮度排序，增加多样性）
 ASCII_CHARS = " .',:;ilI1|\\/()[]{}?_-+~=<>!@#$%&*#"
-ASCII_CHARS_EXTENDED = " .·'´:;,·°ºªilI1|\\/()[]{}?_-+~=<>!@#$%&*#█▓▒░"  # 扩展字符集
+ASCII_CHARS_EXTENDED = " .',:;ilI1|\\/()[]{}?_-+~=<>!@#$%&*#O0O8&@#*+"  # 扩展字符集（更多基础字符）
 ASCII_COLORS = [
     (50, 50, 50),
     (70, 70, 70),
@@ -711,19 +975,26 @@ def create_ascii_art(image, contour, mask, synth=None):
             # 合成器抖动影响（模式5无震荡）
             brightness_jitter = avg_brightness
             
-            # 映射到ASCII字符，合成器影响字符偏移
-            char_idx = int(brightness_jitter / 255 * (len(chars_to_use) - 1))
+            # 映射到ASCII字符
+            base_char_idx = int(brightness_jitter / 255 * (len(chars_to_use) - 1))
             
-            # 模式5：添加位置随机偏移，让字符更多样（至少6种变化）
+            # 模式5：多种字符显示，种类随合成器参数变化
             if synth is not None:
-                # 基于位置的随机偏移（保持一致性）
-                random_offset = int(phase_offsets[row, col] / (2 * np.pi) * 15)  # 0-14的偏移
-                # 添加行和列的额外偏移
-                row_col_offset = ((row * 3 + col * 7) % 10)
-                # 基于亮度分段添加额外变化（确保同一亮度也有多种字符）
-                brightness_segment = int(brightness_jitter / 42) % 6  # 分6段，每段不同偏移
-                # 合成器参数影响
-                char_idx = char_idx + char_offset + random_offset + row_col_offset + brightness_segment
+                # 基于位置的多样性（使用模运算确保在有效范围内）
+                pos_variety = (row * 7 + col * 11 + int(phase_offsets[row, col] * 100)) % 8
+                
+                # 合成器参数影响字符种类（更灵敏）
+                freq_variety = int((synth.frequency - 80) / 50) % 6  # 频率影响
+                lfo_variety = int(synth.lfo_rate * 2) % 5  # LFO速率影响
+                envelope_variety = int(synth.envelope_target * 10) % 4  # 包络影响
+                
+                # 组合偏移（确保多样性且不会超出范围太多）
+                total_variety = pos_variety + freq_variety + lfo_variety + envelope_variety
+                
+                # 使用模运算确保字符种类多样性
+                char_idx = (base_char_idx + total_variety) % len(chars_to_use)
+            else:
+                char_idx = base_char_idx
             
             char_idx = max(0, min(len(chars_to_use) - 1, char_idx))
             

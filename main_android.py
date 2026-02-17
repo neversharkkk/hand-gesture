@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import time
+import threading
 from collections import deque
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -56,44 +57,160 @@ hand_size_history = deque(maxlen=3)
 last_valid_contour = None
 last_valid_time = 0
 
-cube_rotation = [0, 0]
-cube_scale = 1.0
-cube_auto_rotate = True
-
 ASCII_CHARS = " .',:;ilI1|\\/()[]{}?_-+~=<>!@#$%&*#"
-ASCII_COLORS = [
-    (50, 50, 50), (70, 70, 70), (90, 90, 90), (110, 110, 110),
-    (130, 130, 130), (150, 150, 150), (170, 170, 170), (190, 190, 190),
-    (210, 210, 210), (230, 230, 230), (255, 255, 255), (255, 255, 150),
-    (255, 230, 100), (255, 200, 50),
-]
 
-class SimpleSynth:
-    def __init__(self):
+class AndroidAudioSynthesizer:
+    def __init__(self, sample_rate=44100):
+        self.sample_rate = sample_rate
+        self.running = False
+        self.thread = None
+        
         self.frequency = 440.0
+        self.frequency2 = 550.0
+        self.detune = 0.0
+        
         self.lfo_rate = 1.0
         self.lfo_depth = 0.3
-        self.detune = 0.0
         self.lfo_type = 0
+        
+        self.envelope = 0.0
+        self.envelope_target = 0.0
+        
+        self.filter_cutoff = 1000.0
+        
+        self.phase = 0.0
+        self.phase2 = 0.0
+        self.lfo_phase = 0.0
+        
         self.color_hue = 0.0
         self.color_sat = 0.0
-        self.envelope_target = 0.0
         self.volume = 0.4
+        
+        self.delay_buffer = np.zeros(int(sample_rate * 0.5))
+        self.delay_index = 0
+        self.delay_time = 0.3
+        
+        self.audio_track = None
+        self.buffer_size = 2048
+    
+    def start(self):
+        self.running = True
+        self.thread = threading.Thread(target=self._audio_loop, daemon=True)
+        self.thread.start()
+    
+    def stop(self):
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=0.3)
+        if self.audio_track:
+            try:
+                self.audio_track.stop()
+                self.audio_track.release()
+            except:
+                pass
+            self.audio_track = None
+    
+    def _audio_loop(self):
+        try:
+            from jnius import autoclass
+            AudioTrack = autoclass('android.media.AudioTrack')
+            AudioFormat = autoclass('android.media.AudioFormat')
+            AudioManager = autoclass('android.media.AudioManager')
+            
+            channel_config = AudioFormat.CHANNEL_OUT_MONO
+            audio_format = AudioFormat.ENCODING_PCM_16BIT
+            
+            self.buffer_size = max(2048, AudioTrack.getMinBufferSize(
+                self.sample_rate, channel_config, audio_format))
+            
+            self.audio_track = AudioTrack(
+                AudioManager.STREAM_MUSIC,
+                self.sample_rate,
+                channel_config,
+                audio_format,
+                self.buffer_size,
+                AudioTrack.MODE_STREAM
+            )
+            
+            self.audio_track.play()
+            Logger.info("AndroidAudioSynthesizer: AudioTrack started")
+            
+            while self.running:
+                frames = self.buffer_size // 2
+                wave = self._generate_audio(frames)
+                audio_data = (np.clip(wave, -1, 1) * 32767).astype(np.int16).tobytes()
+                self.audio_track.write(audio_data, 0, len(audio_data))
+                
+        except Exception as e:
+            Logger.error(f"AndroidAudioSynthesizer: Audio error: {e}")
+            self.running = False
+    
+    def _generate_audio(self, frames):
+        t = np.arange(frames) / self.sample_rate
+        
+        if self.lfo_type == 0:
+            lfo = np.sin(2 * np.pi * self.lfo_rate * (self.lfo_phase + t))
+        elif self.lfo_type == 1:
+            lfo = np.sign(np.sin(2 * np.pi * self.lfo_rate * (self.lfo_phase + t)))
+        else:
+            lfo = 2 * np.abs(2 * (self.lfo_phase + t) * self.lfo_rate % 1 - 0.5) - 1
+        
+        lfo_mod = 1.0 + lfo * self.lfo_depth
+        
+        freq1 = self.frequency * lfo_mod * (1.0 + self.color_hue * 0.1)
+        phase_inc1 = 2 * np.pi * freq1 / self.sample_rate
+        self.phase = self.phase + np.cumsum(phase_inc1)
+        osc1 = np.sin(self.phase)
+        
+        freq2 = self.frequency2 * (1.0 + self.detune * 0.1) * lfo_mod
+        phase_inc2 = 2 * np.pi * freq2 / self.sample_rate
+        self.phase2 = self.phase2 + np.cumsum(phase_inc2)
+        osc2 = np.sin(self.phase2)
+        
+        wave = osc1 * 0.6 + osc2 * 0.4
+        wave += np.sin(self.phase * 2) * 0.2 * self.color_sat
+        wave += np.sin(self.phase * 3) * 0.1 * self.color_sat
+        
+        envelope_diff = self.envelope_target - self.envelope
+        if abs(envelope_diff) > 0.001:
+            rate = 10.0 if envelope_diff > 0 else 5.0
+            self.envelope += np.sign(envelope_diff) * min(abs(envelope_diff), rate / self.sample_rate * frames)
+        
+        wave = wave * self.envelope * self.volume
+        
+        for i in range(frames):
+            delayed = self.delay_buffer[self.delay_index] * 0.3
+            wave[i] = wave[i] + delayed
+            self.delay_buffer[self.delay_index] = wave[i]
+            self.delay_index = (self.delay_index + 1) % len(self.delay_buffer)
+        
+        self.phase = self.phase[-1] % (2 * np.pi * 1000)
+        self.phase2 = self.phase2[-1] % (2 * np.pi * 1000)
+        self.lfo_phase = (self.lfo_phase + self.lfo_rate * frames / self.sample_rate) % 1.0
+        
+        return wave
     
     def update_from_gesture(self, hand_y, hand_area, hand_x, colors, finger_count=0):
         self.frequency = 80 + (1.0 - hand_y) * 700
+        self.frequency2 = self.frequency * 1.5
+        
         self.lfo_depth = min(0.6, hand_area * 0.0008)
         self.envelope_target = min(1.0, hand_area * 0.0015)
+        
         self.lfo_rate = 0.3 + hand_x * 4.0
+        self.filter_cutoff = 200 + hand_x * 2000
+        
         self.detune = finger_count * 2.0
         self.lfo_type = finger_count % 3
         
         if colors is not None and len(colors) > 0:
             main_color = colors[0]
             r, g, b = main_color[0] / 255.0, main_color[1] / 255.0, main_color[2] / 255.0
+            
             max_c = max(r, g, b)
             min_c = min(r, g, b)
             delta = max_c - min_c
+            
             if delta == 0:
                 hue = 0
             elif max_c == r:
@@ -102,10 +219,23 @@ class SimpleSynth:
                 hue = 60 * (((b - r) / delta) + 2)
             else:
                 hue = 60 * (((r - g) / delta) + 4)
+            
             saturation = delta / max_c if max_c > 0 else 0
+            value = max_c
+            
+            hue_factor = (hue / 360.0) * 0.25
+            self.frequency = self.frequency * (1.0 + hue_factor - 0.125)
+            
             self.color_sat = saturation
             self.lfo_depth = min(0.7, self.lfo_depth + saturation * 0.2)
+            
+            self.filter_cutoff = self.filter_cutoff * (0.6 + value * 0.8)
+            self.volume = 0.3 + value * 0.3
+            
             self.color_hue = hue / 360.0
+        
+        self.delay_time = 0.1 + hand_x * 0.3
+
 
 def smooth_gesture(gesture_name):
     if gesture_name:
@@ -474,7 +604,7 @@ class HandGestureApp(App):
         self.current_mode = MODE_GESTURE
         self.color_centers = None
         self.color_history = deque(maxlen=10)
-        self.synth = SimpleSynth()
+        self.synth = None
         self.fps_smooth = 30
         self.prev_time = time.time()
         
@@ -516,6 +646,13 @@ class HandGestureApp(App):
         return layout
     
     def set_mode(self, mode):
+        if mode == MODE_SYNTH and self.synth is None:
+            self.synth = AndroidAudioSynthesizer()
+            self.synth.start()
+        elif mode != MODE_SYNTH and self.synth is not None:
+            self.synth.stop()
+            self.synth = None
+        
         self.current_mode = mode
         if mode == MODE_COLOR:
             self.color_centers = None
@@ -565,10 +702,15 @@ class HandGestureApp(App):
             hand_x = x / w
             hand_area = cw * ch
             new_colors = extract_8_dominant_colors(display_image)
-            self.synth.update_from_gesture(hand_y, hand_area, hand_x, new_colors, finger_count)
+            if self.synth:
+                self.synth.update_from_gesture(hand_y, hand_area, hand_x, new_colors, finger_count)
             display_image = create_ascii_art(display_image, contour, mask, self.synth)
-            synth_params = (self.synth.frequency, self.synth.lfo_rate, self.synth.lfo_depth, 
-                          self.synth.detune, self.synth.lfo_type)
+            if self.synth:
+                synth_params = (self.synth.frequency, self.synth.lfo_rate, self.synth.lfo_depth, 
+                              self.synth.detune, self.synth.lfo_type)
+        
+        if self.current_mode == MODE_SYNTH and self.synth and contour is None:
+            self.synth.envelope_target = 0.0
         
         curr_time = time.time()
         frame_time = curr_time - self.prev_time
@@ -598,6 +740,8 @@ class HandGestureApp(App):
         self.image_widget.texture = texture
     
     def on_stop(self):
+        if self.synth:
+            self.synth.stop()
         self.camera.release()
 
 

@@ -38,8 +38,8 @@
 4. **发布版本**
    - 创建tag会自动发布Release：
    ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
+   git tag v1.1.0
+   git push origin v1.1.0
    ```
    - 发布后可在 Releases 页面下载APK
 
@@ -110,6 +110,7 @@ docker run --rm -v "D:\Documents\V":/app kivy/buildozer android debug
 - `READ_EXTERNAL_STORAGE` - 存储读取（Android 10及以下）
 - `READ_MEDIA_IMAGES` - 读取图片（Android 13+）
 - `READ_MEDIA_VIDEO` - 读取视频（Android 13+）
+- `READ_MEDIA_AUDIO` - 读取音频（Android 13+，合成器模式）
 
 ## Android 14+ 兼容性
 
@@ -118,12 +119,13 @@ docker run --rm -v "D:\Documents\V":/app kivy/buildozer android debug
 1. **权限模型更新**：自动适配Android 13+的新媒体权限
 2. **摄像头API**：使用`cv2.CAP_ANDROID`后端优先
 3. **缓冲区优化**：设置`BUFFERSIZE=1`减少延迟
+4. **音频输出**：合成器模式使用AudioTrack API实时音频输出
 
 ## 调试模式安装
 
 ```bash
 # 通过ADB安装到设备
-adb install bin/handgesture-1.0.0-arm64-v8a-debug.apk
+adb install bin/handgesture-1.1.0-arm64-v8a-debug.apk
 ```
 
 ## 发布版本打包
