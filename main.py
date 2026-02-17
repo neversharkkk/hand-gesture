@@ -885,8 +885,8 @@ ASCII_COLORS = [
     (255, 200, 50),
 ]
 
-def create_ascii_art(image, contour, mask, synth=None):
-    """在检测到的手部区域创建ASCII艺术效果，符号颜色根据明暗渐变，合成器影响字符"""
+def create_ascii_art(image, contour, mask, synth=None, sampler=None):
+    """在检测到的手部区域创建ASCII艺术效果，符号颜色根据明暗渐变，合成器/采样器影响字符"""
     if contour is None:
         return image
     
@@ -909,8 +909,32 @@ def create_ascii_art(image, contour, mask, synth=None):
     # 转换为灰度图
     gray = cv2.cvtColor(hand_region, cv2.COLOR_BGR2GRAY)
     
+    # 音色颜色映射
+    instrument_colors = {
+        'piano': {'base': (180, 200, 255), 'bright': (220, 240, 255)},      # 淡金色
+        'pad': {'base': (100, 150, 255), 'bright': (150, 200, 255)},        # 柔和蓝紫
+        'bell': {'base': (200, 255, 255), 'bright': (240, 255, 255)},       # 青白色
+        'string': {'base': (100, 200, 150), 'bright': (150, 230, 180)},     # 柔和绿
+        'synth': {'base': (255, 100, 200), 'bright': (255, 150, 230)},      # 粉紫色
+        'bass': {'base': (100, 100, 200), 'bright': (150, 150, 230)},       # 深蓝紫
+    }
+    
     # 根据模式设置不同参数
-    if synth is not None:
+    if sampler is not None:
+        # 模式6：采样器模式
+        base_char_size = max(14, min(20, cw // 12))
+        # 音高影响字符大小
+        note_factor = 1.0 - (sampler.base_note - 48) / 24 * 0.4
+        char_size = int(base_char_size * note_factor)
+        char_size = max(8, min(28, char_size))
+        jitter_freq = 0
+        # 节奏影响字符偏移
+        char_offset = int((sampler.tempo - 60) / 30)
+        chars_to_use = ASCII_CHARS_EXTENDED
+        skip_rate = 0.25
+        # 获取当前音色颜色
+        inst_colors = instrument_colors.get(sampler.current_instrument, instrument_colors['piano'])
+    elif synth is not None:
         # 模式5：合成器模式，更大更稀疏，扩展字符集，无震荡
         base_char_size = max(14, min(20, cw // 12))
         # 频率影响字符大小：更灵敏（高频=小字符，低频=大字符）
@@ -921,6 +945,7 @@ def create_ascii_art(image, contour, mask, synth=None):
         char_offset = int(synth.envelope_target * 30)  # 更多样的字符偏移
         chars_to_use = ASCII_CHARS_EXTENDED  # 扩展字符集
         skip_rate = 0.25  # 更稀疏
+        inst_colors = None
     else:
         # 模式3：普通ASCII模式，回到之前的大小
         char_size = max(4, min(8, cw // 30))
@@ -928,6 +953,7 @@ def create_ascii_art(image, contour, mask, synth=None):
         char_offset = 0
         chars_to_use = ASCII_CHARS
         skip_rate = 0
+        inst_colors = None
     
     # 创建ASCII艺术图像
     ascii_h = ch // char_size
@@ -972,14 +998,28 @@ def create_ascii_art(image, contour, mask, synth=None):
             # 计算平均亮度
             avg_brightness = np.mean(block)
             
-            # 合成器抖动影响（模式5无震荡）
+            # 合成器抖动影响（模式5/6无震荡）
             brightness_jitter = avg_brightness
             
             # 映射到ASCII字符
             base_char_idx = int(brightness_jitter / 255 * (len(chars_to_use) - 1))
             
+            # 模式6：采样器模式 - 字符种类随采样器参数变化
+            if sampler is not None:
+                # 基于位置的多样性
+                pos_variety = (row * 7 + col * 11 + int(phase_offsets[row, col] * 100)) % 8
+                
+                # 采样器参数影响字符种类
+                note_variety = (sampler.base_note - 48) % 12  # 音高影响
+                tempo_variety = int((sampler.tempo - 60) / 20) % 6  # 节奏影响
+                scale_variety = hash(sampler.current_scale) % 5  # 音阶影响
+                inst_variety = hash(sampler.current_instrument) % 4  # 音色影响
+                
+                # 组合偏移
+                total_variety = pos_variety + note_variety + tempo_variety + scale_variety + inst_variety
+                char_idx = (base_char_idx + total_variety) % len(chars_to_use)
             # 模式5：多种字符显示，种类随合成器参数变化
-            if synth is not None:
+            elif synth is not None:
                 # 基于位置的多样性（使用模运算确保在有效范围内）
                 pos_variety = (row * 7 + col * 11 + int(phase_offsets[row, col] * 100)) % 8
                 
@@ -998,11 +1038,22 @@ def create_ascii_art(image, contour, mask, synth=None):
             
             char_idx = max(0, min(len(chars_to_use) - 1, char_idx))
             
-            # 蓝色渐变：根据亮度从深蓝到浅蓝
-            blue_val = int(80 + brightness_jitter * 0.68)
-            green_val = int(40 + brightness_jitter * 0.55)
-            red_val = int(10 + brightness_jitter * 0.35)
-            gradient_color = (blue_val, green_val, red_val)
+            # 字符颜色：根据模式选择
+            if sampler is not None and inst_colors is not None:
+                # 模式6：音色颜色渐变
+                brightness_factor = brightness_jitter / 255.0
+                base_color = inst_colors['base']
+                bright_color = inst_colors['bright']
+                blue_val = int(base_color[0] + (bright_color[0] - base_color[0]) * brightness_factor)
+                green_val = int(base_color[1] + (bright_color[1] - base_color[1]) * brightness_factor)
+                red_val = int(base_color[2] + (bright_color[2] - base_color[2]) * brightness_factor)
+                gradient_color = (blue_val, green_val, red_val)
+            else:
+                # 模式3/5：蓝色渐变
+                blue_val = int(80 + brightness_jitter * 0.68)
+                green_val = int(40 + brightness_jitter * 0.55)
+                red_val = int(10 + brightness_jitter * 0.35)
+                gradient_color = (blue_val, green_val, red_val)
             
             # 获取字符
             char = chars_to_use[char_idx]
@@ -1012,7 +1063,7 @@ def create_ascii_art(image, contour, mask, synth=None):
             draw_y = y + y_start + char_size
             
             # 绘制ASCII字符
-            font_scale = char_size / 18 if synth is not None else char_size / 20
+            font_scale = char_size / 18 if (synth is not None or sampler is not None) else char_size / 20
             cv2.putText(result, char, (draw_x, draw_y), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale,
                        gradient_color, 1, cv2.LINE_AA)
@@ -1223,7 +1274,7 @@ def draw_color_palette_ui(image, centers):
     
     return image
 
-def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None):
+def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None, sampler_params=None):
     h, w = image.shape[:2]
     
     font_scale = 0.5 if h < 600 else 0.85
@@ -1243,9 +1294,19 @@ def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None):
         cv2.putText(image, f'Freq:{int(freq)}Hz Detune:{detune:.1f}', (info_x, int(h * 0.035)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
         cv2.putText(image, f'LFO:{lfo_rate:.1f}Hz {lfo_names[lfo_type]} D:{lfo_depth:.2f}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
     
+    # 采样器模式特殊UI - 信息显示在顶部
+    if current_mode == MODE_SAMPLER and sampler_params is not None:
+        base_note, tempo, scale, instrument, num_inst, mood = sampler_params
+        note_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        note_name = note_names[base_note % 12] + str(base_note // 12 - 1)
+        # 在顶部右侧显示采样器参数
+        info_x = w - 320
+        cv2.putText(image, f'{note_name} {tempo}BPM {scale}', (info_x, int(h * 0.035)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
+        cv2.putText(image, f'{instrument} x{num_inst} {mood}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
+    
     # 底部UI
     cv2.rectangle(image, (0, int(h * 0.92)), (w, h), (0, 0, 0), -1)
-    cv2.putText(image, 'q:Quit 1:Mouse 2:Gesture 3:ASCII 4:Color 5:Synth r:Reset', (10, int(h * 0.96)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (180, 180, 180), 1)
+    cv2.putText(image, 'q:Quit 1:Mouse 2:Gesture 3:ASCII 4:Color 5:Synth 6:Sampler r:Reset', (10, int(h * 0.96)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (180, 180, 180), 1)
     
     if current_mode == MODE_ASCII:
         cv2.putText(image, 'ASCII Art Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
@@ -1255,6 +1316,8 @@ def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None):
             image = draw_color_palette_ui(image, color_centers)
     elif current_mode == MODE_SYNTH:
         cv2.putText(image, 'Synthesizer Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 100, 100), 1)
+    elif current_mode == MODE_SAMPLER:
+        cv2.putText(image, 'Sampler Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 255), 1)
     else:
         mode_color = (0, 255, 0) if current_mode == MODE_GESTURE else (0, 150, 255)
         mode_text = 'Gesture' if current_mode == MODE_GESTURE else 'Mouse'
@@ -1319,6 +1382,10 @@ def main():
     # 合成器模式变量
     global synth
     synth_params = None
+    
+    # 采样器模式变量
+    global sampler
+    sampler_params = None
     
     while cap.isOpened():
         success, image = cap.read()
@@ -1399,7 +1466,7 @@ def main():
                 synth.update_from_gesture(hand_y, hand_area, hand_x, new_colors, finger_count)
                 
                 # 然后创建受合成器影响的ASCII艺术
-                display_image = create_ascii_art(display_image, contour, mask, synth)
+                display_image = create_ascii_art(display_image, contour, mask, synth, None)
                 
                 # 显示参数
                 synth_params = (synth.frequency, synth.lfo_rate, synth.lfo_depth, synth.detune, synth.lfo_type, synth.color_hue, synth.color_sat, synth.envelope_target)
@@ -1413,6 +1480,41 @@ def main():
             synth.stop()
             synth = None
         
+        # 采样器模式（模式6）
+        if current_mode == MODE_SAMPLER:
+            # 启动采样器
+            if sampler is None:
+                sampler = AdvancedSampler()
+                sampler.start()
+            
+            if contour is not None:
+                # 更新采样器参数
+                x, y, cw, ch = cv2.boundingRect(contour)
+                hand_y = y / h
+                hand_x = x / w
+                hand_area = cw * ch
+                
+                # 提取颜色用于音色选择
+                new_colors = extract_8_dominant_colors(display_image)
+                
+                # 更新手势参数
+                sampler.update_from_gesture(hand_y, hand_x, hand_area, finger_count)
+                
+                # 更新颜色参数
+                sampler.update_from_color(new_colors)
+                
+                # 创建ASCII艺术背景
+                display_image = create_ascii_art(display_image, contour, mask, None, sampler)
+                
+                # 显示参数
+                sampler_params = (sampler.base_note, sampler.tempo, sampler.current_scale, 
+                                 sampler.current_instrument, sampler.num_instruments, sampler.color_mood)
+        else:
+            # 停止采样器（切换模式时）
+            if sampler is not None:
+                sampler.stop()
+                sampler = None
+        
         curr_time = time.time()
         frame_time = curr_time - prev_time
         if frame_time > 0:
@@ -1420,7 +1522,7 @@ def main():
             fps_smooth = fps_smooth * 0.9 + fps * 0.1
         prev_time = curr_time
         
-        display_image = draw_ui(display_image, fps_smooth, current_mode, color_centers, synth_params)
+        display_image = draw_ui(display_image, fps_smooth, current_mode, color_centers, synth_params, sampler_params)
         
         cv2.imshow('Hand Gesture Recognition', display_image)
         
@@ -1442,6 +1544,8 @@ def main():
             color_centers = None
         elif key == ord('5'):
             current_mode = MODE_SYNTH
+        elif key == ord('6'):
+            current_mode = MODE_SAMPLER
         elif key == ord('r'):
             # 重置所有历史
             gesture_history.clear()
@@ -1453,6 +1557,9 @@ def main():
     # 停止合成器
     if synth is not None:
         synth.stop()
+    # 停止采样器
+    if sampler is not None:
+        sampler.stop()
     cap.release()
     cv2.destroyAllWindows()
 

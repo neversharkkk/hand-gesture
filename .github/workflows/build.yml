@@ -49,6 +49,13 @@ jobs:
         pip install buildozer cython==0.29.36
         pip install 'kivy[base]'
     
+    - name: Setup Android NDK
+      run: |
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
+        echo "Using NDK: $ANDROID_NDK_LATEST_HOME"
+        ls -la $ANDROID_NDK_LATEST_HOME || true
+    
     - name: Prepare source files
       run: |
         mv main_android.py main.py
