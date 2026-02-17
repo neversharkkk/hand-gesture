@@ -10,7 +10,38 @@ from kivy.uix.togglebutton import ToggleButton
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
 from kivy.logger import Logger
-from android_camera import get_camera_instance
+
+try:
+    from android_camera import get_camera_instance
+except ImportError:
+    def get_camera_instance(camera_index=0, width=640, height=480):
+        class FallbackCamera:
+            def __init__(self, camera_index, width, height):
+                self.camera_index = camera_index
+                self.width = width
+                self.height = height
+                self.cap = None
+                self.permission_granted = True
+            
+            def open(self):
+                self.cap = cv2.VideoCapture(self.camera_index)
+                if self.cap.isOpened():
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                    return True
+                return False
+            
+            def read(self):
+                if self.cap:
+                    return self.cap.read()
+                return False, None
+            
+            def release(self):
+                if self.cap:
+                    self.cap.release()
+        
+        return FallbackCamera(camera_index, width, height)
+    Logger.info("Using fallback camera module")
 
 MODE_GESTURE = 0
 MODE_ASCII = 1

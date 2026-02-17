@@ -9,18 +9,23 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  APP_VERSION: 1.0.0
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Set up Python 3.10
+    - name: Set up Python 3.11
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: '3.11'
+        cache: 'pip'
     
     - name: Install system dependencies
       run: |
@@ -31,37 +36,81 @@ jobs:
           zlib1g-dev libncurses5-dev \
           libncursesw5-dev libtinfo5 \
           cmake libffi-dev libssl-dev \
-          automake wget patchelf
+          automake wget patchelf \
+          libltdl-dev libgmp-dev \
+          libmpfr-dev libmpc-dev \
+          libisl-dev bison flex \
+          texinfo gettext \
+          xclip xsel
     
-    - name: Install Buildozer
+    - name: Install Python dependencies
       run: |
-        pip install --upgrade pip
-        pip install buildozer cython==0.29.33
+        pip install --upgrade pip setuptools wheel
+        pip install buildozer cython==0.29.36
+        pip install 'kivy[base]'
     
     - name: Prepare source files
       run: |
-        cp main_android.py main.py
-        cp requirements_android.txt requirements.txt
+        mv main_android.py main.py
+        ls -la *.py
+    
+    - name: Cache Buildozer global
+      uses: actions/cache@v4
+      with:
+        path: ~/.buildozer
+        key: ${{ runner.os }}-buildozer-global-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-global-
+    
+    - name: Cache Buildozer project
+      uses: actions/cache@v4
+      with:
+        path: .buildozer
+        key: ${{ runner.os }}-buildozer-project-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-project-
+    
+    - name: Initialize Buildozer
+      run: |
+        buildozer init || true
     
     - name: Build APK
+      id: build
       run: |
-        buildozer android debug
+        buildozer android debug 2>&1 | tee build.log
+        echo "build_status=success" >> $GITHUB_OUTPUT
     
-    - name: List built APK files
+    - name: Find APK files
+      if: always()
       run: |
-        ls -la bin/
+        echo "Looking for APK files..."
+        find . -name "*.apk" -type f 2>/dev/null || true
+        ls -la bin/ 2>/dev/null || echo "No bin directory"
     
     - name: Upload APK artifact
+      if: steps.build.outputs.build_status == 'success'
       uses: actions/upload-artifact@v4
       with:
-        name: hand-gesture-apk
-        path: bin/*.apk
+        name: hand-gesture-apk-${{ env.APP_VERSION }}
+        path: |
+          bin/*.apk
+          .buildozer/android/platform/build-*/dists/*/build/outputs/apk/debug/*.apk
         retention-days: 30
+        if-no-files-found: warn
+    
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
+        retention-days: 7
     
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/v') && success()
       uses: softprops/action-gh-release@v1
       with:
-        files: bin/*.apk
+        files: |
+          bin/*.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

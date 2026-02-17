@@ -12,8 +12,7 @@ MODE_GESTURE = 0
 MODE_MOUSE = 1
 MODE_ASCII = 2
 MODE_COLOR = 3
-MODE_COLOR_16 = 4
-MODE_SYNTH = 5
+MODE_SYNTH = 4
 current_mode = MODE_GESTURE
 
 gesture_history = deque(maxlen=5)
@@ -825,157 +824,6 @@ def apply_soft_color_mapping_fast(image, centers):
     
     return result
 
-def extract_16_dominant_colors(image):
-    """提取图像中像素数量最多的16种主色调"""
-    h, w = image.shape[:2]
-    
-    # 缩小图像以加快处理速度
-    small = cv2.resize(image, (w // 8, h // 8))
-    
-    # 转换为RGB
-    rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-    
-    # 重塑为像素列表
-    pixels = rgb.reshape(-1, 3)
-    
-    # 随机采样
-    if len(pixels) > 800:
-        indices = np.random.choice(len(pixels), 800, replace=False)
-        pixels = pixels[indices]
-    
-    # 转换为float32
-    pixels = np.float32(pixels)
-    
-    # K-means聚类
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 12, 3.0)
-    _, labels, centers = cv2.kmeans(pixels, 16, None, criteria, 1, cv2.KMEANS_RANDOM_CENTERS)
-    
-    # 统计每个聚类的像素数量
-    unique, counts = np.unique(labels, return_counts=True)
-    
-    # 按像素数量排序（从多到少）
-    sorted_indices = np.argsort(-counts)
-    
-    # 转换为整数并按像素数量排序
-    centers = np.uint8(centers)
-    sorted_centers = centers[sorted_indices]
-    
-    return sorted_centers
-
-def smooth_color_centers_16(new_centers, history):
-    """平滑16色颜色采样"""
-    if not history:
-        return new_centers
-    
-    history_array = np.array(list(history), dtype=np.float32)
-    new_array = np.array(new_centers, dtype=np.float32)
-    
-    smoothed = np.zeros_like(new_array)
-    
-    for i in range(16):
-        current = new_array[i]
-        min_dist = float('inf')
-        best_match = current.copy()
-        
-        for hist in history_array:
-            for j in range(16):
-                dist = np.sum((hist[j] - current) ** 2)
-                if dist < min_dist:
-                    min_dist = dist
-                    best_match = hist[j]
-        
-        if min_dist < 8000:
-            smoothed[i] = current * 0.5 + best_match * 0.5
-        else:
-            smoothed[i] = current
-    
-    return np.uint8(smoothed)
-
-def create_16_color_palette(centers):
-    """根据16种主色调创建调色板"""
-    palette = []
-    
-    # 6个明度级别
-    factors = [0.35, 0.50, 0.65, 0.80, 0.95, 1.10]
-    
-    for color in centers:
-        r, g, b = color
-        
-        luminance = 0.299 * r + 0.587 * g + 0.114 * b
-        max_val = max(r, g, b)
-        min_val = min(r, g, b)
-        saturation = (max_val - min_val) / max_val if max_val > 0 else 0
-        
-        for factor in factors:
-            if luminance < 80:
-                adjusted_factor = factor * 1.15 + 0.1
-            elif luminance < 150:
-                adjusted_factor = factor * 1.05 + 0.05
-            else:
-                adjusted_factor = factor
-            
-            if saturation < 0.5:
-                sat_boost = 1.3
-            elif saturation < 0.7:
-                sat_boost = 1.15
-            else:
-                sat_boost = 1.0
-            
-            new_r = int(min(255, max(0, r * adjusted_factor)))
-            new_g = int(min(255, max(0, g * adjusted_factor)))
-            new_b = int(min(255, max(0, b * adjusted_factor)))
-            
-            gray_val = 0.299 * new_r + 0.587 * new_g + 0.114 * new_b
-            new_r = int(gray_val + (new_r - gray_val) * sat_boost)
-            new_g = int(gray_val + (new_g - gray_val) * sat_boost)
-            new_b = int(gray_val + (new_b - gray_val) * sat_boost)
-            
-            new_r = min(255, max(0, new_r))
-            new_g = min(255, max(0, new_g))
-            new_b = min(255, max(0, new_b))
-            
-            palette.append((new_b, new_g, new_r))
-    
-    return palette
-
-def apply_16_color_mapping(image, centers):
-    """应用16色色彩映射"""
-    h, w = image.shape[:2]
-    
-    palette = create_16_color_palette(centers)
-    palette = np.array(palette, dtype=np.uint8)
-    
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).astype(np.float32)
-    
-    centers_array = np.array(centers, dtype=np.float32)
-    pixels = rgb.reshape(-1, 3)
-    
-    diff = pixels[:, np.newaxis, :] - centers_array[np.newaxis, :, :]
-    distances = np.sum(diff ** 2, axis=2)
-    
-    color_indices = np.argmin(distances, axis=1)
-    
-    gray_flat = gray.reshape(-1).astype(np.float32)
-    levels = (gray_flat / 255 * 5).astype(np.int32)
-    levels = np.clip(levels, 0, 5)
-    
-    palette_indices = color_indices * 6 + levels
-    
-    result_flat = palette[palette_indices]
-    result = result_flat.reshape(h, w, 3)
-    
-    # 输出滤波
-    result = cv2.GaussianBlur(result, (3, 3), 0.5)
-    
-    # 色彩增强
-    hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
-    hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.15, 0, 255)
-    hsv[:, :, 2] = np.clip(hsv[:, :, 2] * 1.05, 0, 255)
-    result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-    
-    return result
-
 def draw_color_palette_ui(image, centers):
     """绘制颜色调色板UI"""
     h, w = image.shape[:2]
@@ -1000,42 +848,42 @@ def draw_color_palette_ui(image, centers):
     
     return image
 
-def draw_ui(image, fps, current_mode, color_centers=None, color_centers_16=None, synth_params=None):
+def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None):
     h, w = image.shape[:2]
     
     font_scale = 0.5 if h < 600 else 0.85
     font_scale_small = 0.4 if h < 600 else 0.6
     
+    # 顶部UI
     cv2.rectangle(image, (0, 0), (w, int(h * 0.08)), (0, 0, 0), -1)
     cv2.putText(image, 'Hand Gesture', (10, int(h * 0.055)), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), 2)
     cv2.putText(image, f'FPS:{int(fps)}', (w - 80, int(h * 0.055)), cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 255, 255), 2)
     
-    cv2.rectangle(image, (0, int(h * 0.88)), (w, h), (0, 0, 0), -1)
-    cv2.putText(image, 'q:Quit 1:Mouse 2:Gesture 3:ASCII 4:Color8 5:Color16 6:Synth r:Reset', (10, int(h * 0.92)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (180, 180, 180), 1)
+    # 合成器模式特殊UI - 信息显示在顶部
+    if current_mode == MODE_SYNTH and synth_params is not None:
+        freq, lfo_rate, lfo_depth, detune, lfo_type = synth_params
+        lfo_names = ['Sin', 'Sqr', 'Tri']
+        # 在顶部右侧显示合成器参数
+        info_x = w - 280
+        cv2.putText(image, f'Freq:{int(freq)}Hz', (info_x, int(h * 0.035)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
+        cv2.putText(image, f'LFO:{lfo_rate:.1f}Hz {lfo_names[lfo_type]}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
+    
+    # 底部UI
+    cv2.rectangle(image, (0, int(h * 0.92)), (w, h), (0, 0, 0), -1)
+    cv2.putText(image, 'q:Quit 1:Mouse 2:Gesture 3:ASCII 4:Color 5:Synth r:Reset', (10, int(h * 0.96)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (180, 180, 180), 1)
     
     if current_mode == MODE_ASCII:
-        cv2.putText(image, 'ASCII Art Mode', (10, int(h * 0.97)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
+        cv2.putText(image, 'ASCII Art Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
     elif current_mode == MODE_COLOR:
-        cv2.putText(image, '8-Color Mode', (10, int(h * 0.97)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (200, 100, 255), 1)
+        cv2.putText(image, '8-Color Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (200, 100, 255), 1)
         if color_centers is not None:
             image = draw_color_palette_ui(image, color_centers)
-    elif current_mode == MODE_COLOR_16:
-        cv2.putText(image, '16-Color Mode', (10, int(h * 0.97)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 200, 255), 1)
-        if color_centers_16 is not None:
-            image = draw_color_palette_ui(image, color_centers_16)
     elif current_mode == MODE_SYNTH:
-        cv2.putText(image, 'Synthesizer Mode', (10, int(h * 0.97)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 100, 100), 1)
-        if synth_params is not None:
-            freq, lfo_rate, lfo_depth, detune, lfo_type = synth_params
-            lfo_names = ['Sin', 'Sqr', 'Tri']
-            cv2.putText(image, f'Freq:{int(freq)}Hz LFO:{lfo_rate:.1f}Hz Detune:{detune:.0f}', 
-                       (10, int(h * 0.93)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
-            cv2.putText(image, f'LFO Type:{lfo_names[lfo_type]} Depth:{lfo_depth:.2f}', 
-                       (w // 2, int(h * 0.93)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
+        cv2.putText(image, 'Synthesizer Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 100, 100), 1)
     else:
         mode_color = (0, 255, 0) if current_mode == MODE_GESTURE else (0, 150, 255)
         mode_text = 'Gesture' if current_mode == MODE_GESTURE else 'Mouse'
-        cv2.putText(image, f'Mode: {mode_text}', (10, int(h * 0.97)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, mode_color, 1)
+        cv2.putText(image, f'Mode: {mode_text}', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, mode_color, 1)
     
     return image
 
@@ -1065,9 +913,7 @@ def main():
     
     # 颜色模式变量
     color_centers = None
-    color_history = deque(maxlen=10)  # 颜色历史缓冲区（增加长度）
-    color_centers_16 = None
-    color_history_16 = deque(maxlen=10)  # 16色历史缓冲区
+    color_history = deque(maxlen=10)
     
     # 合成器模式变量
     global synth
@@ -1133,13 +979,6 @@ def main():
             # 应用生动鲜艳色彩映射
             display_image = apply_soft_color_mapping_fast(display_image, color_centers)
         
-        # 16色模式
-        if current_mode == MODE_COLOR_16:
-            new_colors_16 = extract_16_dominant_colors(display_image)
-            color_centers_16 = smooth_color_centers_16(new_colors_16, color_history_16)
-            color_history_16.append(color_centers_16.copy())
-            display_image = apply_16_color_mapping(display_image, color_centers_16)
-        
         # 合成器模式
         if current_mode == MODE_SYNTH:
             # 启动合成器
@@ -1186,7 +1025,7 @@ def main():
             fps_smooth = fps_smooth * 0.9 + fps * 0.1
         prev_time = curr_time
         
-        display_image = draw_ui(display_image, fps_smooth, current_mode, color_centers, color_centers_16, synth_params)
+        display_image = draw_ui(display_image, fps_smooth, current_mode, color_centers, synth_params)
         
         cv2.imshow('Hand Gesture Recognition', display_image)
         
@@ -1203,9 +1042,6 @@ def main():
             current_mode = MODE_COLOR
             color_centers = None
         elif key == ord('5'):
-            current_mode = MODE_COLOR_16
-            color_centers_16 = None
-        elif key == ord('6'):
             current_mode = MODE_SYNTH
         elif key == ord('r'):
             # 重置所有历史
