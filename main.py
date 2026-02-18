@@ -15,14 +15,17 @@ MODE_COLOR = 3
 MODE_SYNTH = 4
 MODE_SAMPLER = 5
 MODE_SYNTH_VISUAL = 7
+MODE_ART_PIONEER = 8
 current_mode = MODE_GESTURE
 
 synth = None
 sampler = None
 synth_visual = None
+synth_art_pioneer = None
+prev_frame_gray = None
 
 # 平滑马赛克位置历史
-mosaic_position_history = deque(maxlen=10)
+mosaic_position_history = deque(maxlen=50)
 
 gesture_history = deque(maxlen=5)
 
@@ -3667,10 +3670,15 @@ def apply_hand_mosaic(image, contour, synth, hand_area):
     current_pos = (x, y)
     mosaic_position_history.append(current_pos)
     
-    # 计算平滑后的位置
+    # 计算平滑后的位置（增加黏度，使用加权平均）
     if len(mosaic_position_history) > 1:
-        smooth_x = int(np.mean([p[0] for p in mosaic_position_history]))
-        smooth_y = int(np.mean([p[1] for p in mosaic_position_history]))
+        # 加权平均，给最近的历史更高权重，但整体更慢
+        weights = np.linspace(0.1, 1.0, len(mosaic_position_history))
+        weights = weights / np.sum(weights)
+        
+        positions = np.array(mosaic_position_history)
+        smooth_x = int(np.sum(positions[:, 0] * weights))
+        smooth_y = int(np.sum(positions[:, 1] * weights))
         x, y = smooth_x, smooth_y
     
     # 扩展边界框
@@ -3708,8 +3716,28 @@ def apply_hand_mosaic(image, contour, synth, hand_area):
             mosaic_shifted[:, :, 2] = np.roll(mosaic_shifted[:, :, 2], -shift_amount, axis=1)
             mosaic = cv2.addWeighted(mosaic, 0.6, mosaic_shifted, 0.4, 0)
     
-    # 应用回原图
-    result[y_start:y_end, x_start:x_end] = mosaic
+    # 创建边缘流体效果
+    mask_region = np.zeros((hand_h, hand_w), dtype=np.uint8)
+    # 调整contour坐标到相对于hand_region的坐标
+    contour_shifted = contour.copy()
+    contour_shifted[:, :, 0] -= x_start
+    contour_shifted[:, :, 1] -= y_start
+    cv2.drawContours(mask_region, [contour_shifted], 0, 255, -1)
+    
+    # 边缘平滑 - 使用形态学操作和高斯模糊（增加黏度）
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+    mask_region = cv2.morphologyEx(mask_region, cv2.MORPH_CLOSE, kernel)
+    mask_region = cv2.GaussianBlur(mask_region, (21, 21), 3)
+    
+    # 扩展一点边缘
+    mask_region = mask_region.astype(np.float32) / 255.0
+    
+    # 使用alpha混合
+    for c in range(3):
+        result[y_start:y_end, x_start:x_end, c] = (
+            result[y_start:y_end, x_start:x_end, c] * (1 - mask_region) + 
+            mosaic[:, :, c] * mask_region
+        )
     
     # 提升整体画面的饱和度和对比度
     hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
@@ -3723,6 +3751,145 @@ def apply_hand_mosaic(image, contour, synth, hand_area):
     result = cv2.convertScaleAbs(result, alpha=alpha, beta=beta)
     
     return result
+
+def apply_pioneer_art_effect(image, synth, contour, prev_gray):
+    """先锋艺术效果：光流色彩爆发与动态分割（自然柔和版）"""
+    h, w = image.shape[:2]
+    
+    result = image.copy()
+    
+    # 获取合成器参数
+    if synth is not None:
+        frequency = getattr(synth, 'frequency', 440.0)
+        lfo_rate = getattr(synth, 'lfo_rate', 1.0)
+        lfo_depth = getattr(synth, 'lfo_depth', 0.3)
+        envelope = getattr(synth, 'envelope_target', 0.0)
+    else:
+        frequency = 440.0
+        lfo_rate = 1.0
+        lfo_depth = 0.3
+        envelope = 0.0
+    
+    # 当前帧灰度
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    
+    # 光流检测 - 使用降采样提高性能
+    flow = None
+    if prev_gray is not None:
+        try:
+            # 降采样图像
+            scale_factor = 0.4
+            small_prev = cv2.resize(prev_gray, (int(w * scale_factor), int(h * scale_factor)))
+            small_gray = cv2.resize(gray, (int(w * scale_factor), int(h * scale_factor)))
+            
+            # 计算光流 - 更平滑的参数
+            small_flow = cv2.calcOpticalFlowFarneback(small_prev, small_gray, None, 0.5, 5, 15, 3, 7, 1.5, 0)
+            
+            # 上采样回原尺寸
+            flow = cv2.resize(small_flow, (w, h))
+            flow[:, :, 0] /= scale_factor
+            flow[:, :, 1] /= scale_factor
+        except:
+            pass
+    
+    # 创建艺术效果
+    # 1. 基础层：柔和色彩增强
+    hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
+    
+    # 饱和度和亮度柔和增强
+    sat_boost = 1.2 + envelope * 0.6
+    val_boost = 1.05 + envelope * 0.2
+    hsv[:, :, 1] = np.clip(hsv[:, :, 1] * sat_boost, 0, 255)
+    hsv[:, :, 2] = np.clip(hsv[:, :, 2] * val_boost, 0, 255)
+    
+    result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+    
+    # 2. 如果有光流，添加柔和的运动色彩爆发
+    if flow is not None:
+        # 计算光流强度
+        mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+        
+        # 光流先做高斯模糊，更自然
+        mag = cv2.GaussianBlur(mag, (15, 15), 3)
+        
+        # 合成器参数影响爆发强度 - 更柔和
+        flow_intensity = np.clip(mag * (0.3 + lfo_depth * 0.8), 0, 30)
+        
+        # 创建色彩爆发层 - 向量化计算
+        ang_deg = ang * 180 / np.pi
+        
+        # 角度也做平滑
+        ang_smooth = cv2.GaussianBlur(ang_deg, (15, 15), 3)
+        
+        # 创建色相映射 - 调整到OpenCV HSV范围 0-179
+        hue_map = np.zeros((h, w), dtype=np.uint8)
+        
+        # 根据角度分配色相 - 转换到0-179
+        mask = ang_smooth < 60
+        hue_map[mask] = 0
+        mask = (ang_smooth >= 60) & (ang_smooth < 120)
+        hue_map[mask] = 30
+        mask = (ang_smooth >= 120) & (ang_smooth < 180)
+        hue_map[mask] = 60
+        mask = (ang_smooth >= 180) & (ang_smooth < 240)
+        hue_map[mask] = 90
+        mask = (ang_smooth >= 240) & (ang_smooth < 300)
+        hue_map[mask] = 120
+        mask = ang_smooth >= 300
+        hue_map[mask] = 150
+        
+        # 创建HSV爆发层 - 柔和饱和度
+        burst_hsv = np.zeros((h, w, 3), dtype=np.float32)
+        burst_hsv[:, :, 0] = hue_map
+        burst_hsv[:, :, 1] = 180
+        burst_hsv[:, :, 2] = np.clip(flow_intensity * 3, 0, 200)
+        
+        # 转换为BGR
+        burst_layer = cv2.cvtColor(burst_hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+        
+        # 高斯模糊爆发层，更自然
+        burst_layer = cv2.GaussianBlur(burst_layer, (7, 7), 2)
+        
+        # 只保留有强度的区域
+        mask = flow_intensity > 0.5
+        burst_masked = np.zeros_like(burst_layer)
+        burst_masked[mask] = burst_layer[mask]
+        
+        # 混合爆发层 - 更柔和的混合
+        blend_factor = min(0.35, 0.1 + envelope * 0.25)
+        result = cv2.addWeighted(result, 1.0 - blend_factor, burst_masked, blend_factor, 0)
+    
+    # 3. 柔和边缘高亮
+    if contour is not None:
+        # 创建手部高亮
+        highlight_mask = np.zeros((h, w), dtype=np.float32)
+        cv2.drawContours(highlight_mask, [contour], 0, 1.0, -1)
+        
+        # 更柔的高斯模糊
+        highlight_mask = cv2.GaussianBlur(highlight_mask, (51, 51), 10)
+        
+        # 高亮色 - 随LFO柔和变化
+        hue_shift = int(lfo_rate * 15 % 180)
+        highlight_color = np.array([
+            255 * (0.5 + 0.3 * np.sin(hue_shift * np.pi / 180)),
+            255 * (0.5 + 0.3 * np.sin((hue_shift + 120) * np.pi / 180)),
+            255 * (0.5 + 0.3 * np.sin((hue_shift + 240) * np.pi / 180))
+        ])
+        
+        # 应用柔和高亮
+        for c in range(3):
+            result[:, :, c] = np.clip(
+                result[:, :, c].astype(np.float32) * (1.0 - highlight_mask * 0.15) +
+                highlight_color[c] * highlight_mask * (0.3 + envelope * 0.2),
+                0, 255
+            ).astype(np.uint8)
+    
+    # 4. 对比度和饱和度柔和增强
+    alpha = 1.1 + envelope * 0.15
+    beta = 5 + int(envelope * 10)
+    result = cv2.convertScaleAbs(result, alpha=alpha, beta=beta)
+    
+    return result, gray.copy()
 
 def draw_color_palette_ui(image, centers):
     """绘制颜色调色板UI"""
@@ -3748,7 +3915,7 @@ def draw_color_palette_ui(image, centers):
     
     return image
 
-def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None, sampler_params=None, sampler=None, synth_visual_params=None):
+def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None, sampler_params=None, sampler=None, synth_visual_params=None, synth_art_pioneer_params=None):
     h, w = image.shape[:2]
     
     font_scale = 0.5 if h < 600 else 0.85
@@ -3820,9 +3987,18 @@ def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None, sam
         cv2.putText(image, f'Freq:{int(freq)}Hz Detune:{detune:.1f}', (info_x, int(h * 0.035)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
         cv2.putText(image, f'LFO:{lfo_rate:.1f}Hz {lfo_names[lfo_type]} D:{lfo_depth:.2f}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
     
+    # 先锋艺术模式特殊UI - 与合成器模式相同
+    if current_mode == MODE_ART_PIONEER and synth_art_pioneer_params is not None:
+        freq, lfo_rate, lfo_depth, detune, lfo_type, hue, sat, val = synth_art_pioneer_params
+        lfo_names = ['Sin', 'Sqr', 'Tri']
+        # 在顶部右侧显示合成器参数
+        info_x = w - 300
+        cv2.putText(image, f'Freq:{int(freq)}Hz Detune:{detune:.1f}', (info_x, int(h * 0.035)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
+        cv2.putText(image, f'LFO:{lfo_rate:.1f}Hz {lfo_names[lfo_type]} D:{lfo_depth:.2f}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 100, 200), 1)
+    
     # 底部UI
     cv2.rectangle(image, (0, int(h * 0.92)), (w, h), (0, 0, 0), -1)
-    cv2.putText(image, 'q:Quit 1:Mouse 2:Gesture 3:ASCII 4:Color 5:Synth 6:Sampler 7:SynthVisual r:Reset', (10, int(h * 0.96)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (180, 180, 180), 1)
+    cv2.putText(image, 'q:Quit 1:Mouse 2:Gesture 3:ASCII 4:Color 5:Synth 6:Sampler 7:SynthVisual 8:PioneerArt r:Reset', (10, int(h * 0.96)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (180, 180, 180), 1)
     
     if current_mode == MODE_ASCII:
         cv2.putText(image, 'ASCII Art Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
@@ -3836,6 +4012,8 @@ def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None, sam
         cv2.putText(image, 'TR-808 Sequencer Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 255), 1)
     elif current_mode == MODE_SYNTH_VISUAL:
         cv2.putText(image, 'Synth Visual Blend Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 100, 255), 1)
+    elif current_mode == MODE_ART_PIONEER:
+        cv2.putText(image, 'Pioneer Art Mode', (10, int(h * 0.90)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
     else:
         mode_color = (0, 255, 0) if current_mode == MODE_GESTURE else (0, 150, 255)
         mode_text = 'Gesture' if current_mode == MODE_GESTURE else 'Mouse'
@@ -3908,6 +4086,11 @@ def main():
     # 合成视觉模式变量
     global synth_visual
     synth_visual_params = None
+    
+    # 先锋艺术模式变量
+    global synth_art_pioneer
+    global prev_frame_gray
+    synth_art_pioneer_params = None
     
     while cap.isOpened():
         success, image = cap.read()
@@ -4080,6 +4263,46 @@ def main():
                 synth_visual.stop()
                 synth_visual = None
         
+        # 先锋艺术模式（模式8）- 光流色彩爆发
+        if current_mode == MODE_ART_PIONEER:
+            # 启动合成器
+            if synth_art_pioneer is None:
+                synth_art_pioneer = AudioSynthesizer()
+                synth_art_pioneer.start()
+            
+            # 记录手部信息
+            if contour is not None:
+                x, y, cw, ch = cv2.boundingRect(contour)
+                hand_y = y / h
+                hand_x = x / w
+                hand_area_val = cw * ch
+                
+                # 提取颜色用于音色调整
+                new_colors = extract_8_dominant_colors(display_image)
+                
+                # 更新合成器参数
+                synth_art_pioneer.update_from_gesture(hand_y, hand_area_val, hand_x, new_colors, finger_count)
+                
+                # 显示参数
+                synth_art_pioneer_params = (synth_art_pioneer.frequency, synth_art_pioneer.lfo_rate, 
+                                           synth_art_pioneer.lfo_depth, synth_art_pioneer.detune, 
+                                           synth_art_pioneer.lfo_type, synth_art_pioneer.color_hue, 
+                                           synth_art_pioneer.color_sat, synth_art_pioneer.envelope_target)
+            else:
+                # 没有检测到手时，降低音量
+                if synth_art_pioneer is not None:
+                    synth_art_pioneer.envelope_target = 0.0
+            
+            # 应用先锋艺术效果
+            display_image, new_gray = apply_pioneer_art_effect(display_image, synth_art_pioneer, contour, prev_frame_gray)
+            prev_frame_gray = new_gray
+        else:
+            # 停止先锋艺术合成器（切换模式时）
+            if synth_art_pioneer is not None:
+                synth_art_pioneer.stop()
+                synth_art_pioneer = None
+                prev_frame_gray = None
+        
         curr_time = time.time()
         frame_time = curr_time - prev_time
         if frame_time > 0:
@@ -4087,7 +4310,7 @@ def main():
             fps_smooth = fps_smooth * 0.9 + fps * 0.1
         prev_time = curr_time
         
-        display_image = draw_ui(display_image, fps_smooth, current_mode, color_centers, synth_params, sampler_params, sampler, synth_visual_params)
+        display_image = draw_ui(display_image, fps_smooth, current_mode, color_centers, synth_params, sampler_params, sampler, synth_visual_params, synth_art_pioneer_params)
         
         cv2.imshow('Hand Gesture Recognition', display_image)
         
@@ -4113,6 +4336,8 @@ def main():
             current_mode = MODE_SAMPLER
         elif key == ord('7'):
             current_mode = MODE_SYNTH_VISUAL
+        elif key == ord('8'):
+            current_mode = MODE_ART_PIONEER
         elif key == ord('r'):
             # 重置所有历史
             gesture_history.clear()
@@ -4130,6 +4355,9 @@ def main():
     # 停止视觉合成器
     if synth_visual is not None:
         synth_visual.stop()
+    # 停止先锋艺术合成器
+    if synth_art_pioneer is not None:
+        synth_art_pioneer.stop()
     cap.release()
     cv2.destroyAllWindows()
 

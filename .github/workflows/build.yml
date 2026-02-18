@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: 1.1.0
+  APP_VERSION: 1.3.0
 
 jobs:
   build:
@@ -21,10 +21,10 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Set up Python 3.11
+    - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: '3.10'
         cache: 'pip'
     
     - name: Install system dependencies
@@ -50,16 +50,16 @@ jobs:
     
     - name: Prepare source files
       run: |
-        cp main_minimal.py main.py
+        cp main_test.py main.py
         ls -la *.py
     
     - name: Cache Buildozer global
       uses: actions/cache@v4
       with:
         path: ~/.buildozer
-        key: ${{ runner.os }}-buildozer-global-v3-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-global-v4-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-global-v3-
+          ${{ runner.os }}-buildozer-global-v4-
     
     - name: Build APK
       run: |
