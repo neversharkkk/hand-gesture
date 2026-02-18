@@ -69,9 +69,7 @@ pip3 install buildozer cython==0.29.36
 
 将以下文件复制到Linux环境的项目目录：
 - `main_android.py` 重命名为 `main.py`
-- `android_camera.py`
 - `buildozer.spec`
-- `requirements_android.txt`
 
 然后执行：
 
@@ -98,28 +96,25 @@ docker run --rm -v "D:\Documents\V":/app kivy/buildozer android debug
 | 文件 | 说明 |
 |------|------|
 | `main_android.py` | Kivy版本的Android应用主程序 |
-| `android_camera.py` | Android摄像头适配模块 |
+| `android_camera.py` | Android摄像头适配模块（如有） |
 | `buildozer.spec` | Buildozer配置文件 |
-| `requirements_android.txt` | Python依赖列表 |
 
 ## 权限配置
 
 应用需要以下权限：
 - `CAMERA` - 摄像头访问
-- `WRITE_EXTERNAL_STORAGE` - 存储写入（Android 10及以下）
-- `READ_EXTERNAL_STORAGE` - 存储读取（Android 10及以下）
-- `READ_MEDIA_IMAGES` - 读取图片（Android 13+）
-- `READ_MEDIA_VIDEO` - 读取视频（Android 13+）
-- `READ_MEDIA_AUDIO` - 读取音频（Android 13+，合成器模式）
 
-## Android 14+ 兼容性
+## 功能说明
 
-针对Android 14及以上版本的兼容性处理：
+### Android端功能
+- **Camera模式**：摄像头预览，实时运动检测
+- **Synth模式**：动作控制实时音频合成
 
-1. **权限模型更新**：自动适配Android 13+的新媒体权限
-2. **摄像头API**：使用`cv2.CAP_ANDROID`后端优先
-3. **缓冲区优化**：设置`BUFFERSIZE=1`减少延迟
-4. **音频输出**：合成器模式使用AudioTrack API实时音频输出
+### 动作合成器
+基于画面中运动的位置和幅度控制音频：
+- 动作Y位置 → 频率（高=高频）
+- 动作X位置 → LFO速率
+- 动作幅度 → LFO深度和音量
 
 ## 调试模式安装
 
@@ -149,5 +144,5 @@ buildozer android release
 3. 检查是否有其他应用占用摄像头
 
 ### 画面卡顿
-1. 降低分辨率（修改`width`和`height`参数）
+1. 降低分辨率
 2. 关闭其他后台应用
