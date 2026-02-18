@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['d:\\Documents\\V\\main_backup_20260218_102049.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
     datas=[],

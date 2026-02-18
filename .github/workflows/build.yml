@@ -50,7 +50,7 @@ jobs:
     
     - name: Prepare source files
       run: |
-        cp main_stable.py main.py
+        cp main_minimal.py main.py
         ls -la *.py
     
     - name: Cache Buildozer global
