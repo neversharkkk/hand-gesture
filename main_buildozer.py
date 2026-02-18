@@ -7,7 +7,6 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.image import Image
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
-from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
@@ -369,8 +368,6 @@ class AndroidTR808:
             Logger.info("TR-808 started")
             
             step_duration = 60.0 / self.tempo / 4.0
-            samples_per_step = int(step_duration * self.sample_rate)
-            sample_pos = 0
             last_step_time = time.time()
             
             while self.running:
@@ -378,13 +375,14 @@ class AndroidTR808:
                 if curr_time - last_step_time >= step_duration:
                     self.current_step = (self.current_step + 1) % self.step_count
                     last_step_time = curr_time
+                    step_duration = 60.0 / self.tempo / 4.0
                     
                     pattern = self.patterns.get(self.current_pattern, self.patterns['classic'])
                     for drum in pattern:
                         if pattern[drum][self.current_step] > 0:
                             self.drum_envelopes[drum] = 1.0
                 
-                frames = min(buffer_size // 2, samples_per_step)
+                frames = buffer_size // 2
                 wave = self._generate_drum_wave(frames)
                 audio_data = (np.clip(wave, -1, 1) * 32767).astype(np.int16).tobytes()
                 self.audio_track.write(audio_data, 0, len(audio_data))
@@ -451,7 +449,6 @@ def create_ascii_art(image, contour, mask, synth=None, sampler=None):
         step_factor = 1.0 - sampler.current_step / 16 * 0.3
         char_size = int(base_char_size * step_factor)
         char_size = max(8, min(28, char_size))
-        char_offset = int((sampler.tempo - 60) / 30)
         chars_to_use = ASCII_CHARS_EXTENDED
         skip_rate = 0.25
         inst_colors = sampler.pattern_colors.get(sampler.current_pattern, sampler.pattern_colors['classic'])
@@ -460,13 +457,11 @@ def create_ascii_art(image, contour, mask, synth=None, sampler=None):
         freq_factor = 1.0 - (synth.frequency - 80) / 700 * 0.5
         char_size = int(base_char_size * freq_factor)
         char_size = max(8, min(28, char_size))
-        char_offset = int(synth.envelope * 30)
         chars_to_use = ASCII_CHARS_EXTENDED
         skip_rate = 0.25
         inst_colors = None
     else:
         char_size = max(4, min(8, cw // 30))
-        char_offset = 0
         chars_to_use = ASCII_CHARS
         skip_rate = 0
         inst_colors = None
