@@ -238,20 +238,37 @@ class AudioSynthesizer:
 
 # 高级采样器类 - 多音色旋律生成
 class TR808Sequencer:
-    """TR-808风格音序器采样器"""
-    def __init__(self, sample_rate=44100, buffer_size=512):
+    """TR-808风格音序器采样器 - 高品质版"""
+    def __init__(self, sample_rate=48000, buffer_size=1024):
         self.sample_rate = sample_rate
         self.buffer_size = buffer_size
         self.running = False
         self.thread = None
         
-        # 音序器参数
+        # 高品质噪声表（预生成，避免实时随机噪声）
+        self._noise_table_size = sample_rate * 2
+        self._noise_table = np.random.uniform(-1, 1, self._noise_table_size).astype(np.float32)
+        self._noise_index = 0
+        
+        # 音序器参数（带平滑过渡）
         self.tempo = 120
-        self.step_count = 16  # 16步音序器
+        self.tempo_target = 120
+        self.tempo_smoothing = 0.02
+        
+        self.step_count = 16
         self.current_step = 0
         self.step_phase = 0.0
         
-        # 808音色定义
+        # 风格混合系统
+        self.style_weights = {
+            'classic': 1.0, 'hiphop': 0.0, 'house': 0.0,
+            'techno': 0.0, 'breakbeat': 0.0, 'dubstep': 0.0,
+            'jungle': 0.0, 'ambient': 0.0,
+        }
+        self.style_target = 'classic'
+        self.style_transition_speed = 0.05
+        
+        # 808音色定义（扩展）
         self.drum_kits = {
             'kick': {'name': '底鼓', 'short': 'KD'},
             'snare': {'name': '军鼓', 'short': 'SD'},
@@ -265,85 +282,119 @@ class TR808Sequencer:
             'cowbell': {'name': '牛铃', 'short': 'CB'},
             'clave': {'name': '克拉维', 'short': 'CL'},
             'maracas': {'name': '沙锤', 'short': 'MA'},
+            'conga_high': {'name': '高康加', 'short': 'CG'},
+            'conga_low': {'name': '低康加', 'short': 'CL'},
+            'cymbal': {'name': '镲片', 'short': 'CY'},
         }
         
-        # 音序器模式
+        # 扩展音序器模式（更多风格）
         self.patterns = {
-            'classic': {  # 经典4/4
+            'classic': {
                 'kick': [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
                 'snare': [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
                 'hihat_closed': [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
                 'clap': [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
             },
-            'hiphop': {  # 嘻哈
+            'hiphop': {
                 'kick': [1,0,0,1, 0,0,1,0, 0,1,0,0, 1,0,0,0],
                 'snare': [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,1],
                 'hihat_closed': [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1],
                 'hihat_open': [0,0,0,0, 0,0,0,1, 0,0,0,0, 0,0,0,1],
             },
-            'house': {  # 浩室
+            'house': {
                 'kick': [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
                 'clap': [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
                 'hihat_closed': [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,1,0],
                 'hihat_open': [0,0,0,1, 0,0,0,1, 0,0,0,1, 0,0,0,1],
             },
-            'techno': {  # 科技
+            'techno': {
                 'kick': [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
                 'hihat_closed': [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1],
                 'hihat_open': [0,0,0,1, 0,0,0,1, 0,0,0,1, 0,0,0,1],
                 'clap': [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
+                'tom_mid': [0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
             },
-            'breakbeat': {  # 碎拍
+            'breakbeat': {
                 'kick': [1,0,0,1, 0,0,1,0, 0,0,1,0, 1,0,0,0],
                 'snare': [0,0,0,0, 1,0,0,1, 0,0,0,0, 1,0,0,0],
                 'hihat_closed': [1,0,1,1, 0,1,1,0, 1,0,1,0, 1,1,0,1],
             },
+            'dubstep': {
+                'kick': [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+                'snare': [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
+                'hihat_closed': [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
+                'hihat_open': [0,0,0,1, 0,0,0,1, 0,0,0,1, 0,0,0,1],
+                'tom_low': [0,0,0,0, 0,0,1,0, 0,0,0,0, 0,0,1,0],
+            },
+            'jungle': {
+                'kick': [1,0,0,0, 0,0,1,0, 0,0,0,0, 1,0,0,1],
+                'snare': [0,0,0,1, 0,0,0,0, 1,0,0,1, 0,0,0,0],
+                'hihat_closed': [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1],
+                'hihat_open': [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1],
+            },
+            'ambient': {
+                'kick': [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+                'hihat_closed': [0,0,0,0, 0,0,1,0, 0,0,0,0, 0,0,1,0],
+                'clap': [0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0,0,0],
+                'tom_high': [0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+            },
         }
         self.current_pattern = 'classic'
         
-        # 用户自定义模式（手势控制）
-        self.user_pattern = {
-            'kick': [0]*16,
-            'snare': [0]*16,
-            'clap': [0]*16,
-            'hihat_closed': [0]*16,
-            'hihat_open': [0]*16,
-            'tom_high': [0]*16,
-            'tom_mid': [0]*16,
-            'tom_low': [0]*16,
-        }
-        self.editing_drum = 'kick'  # 当前编辑的鼓
+        # 动态模式生成
+        self.generated_pattern = {k: [0]*16 for k in self.drum_kits.keys()}
+        self.pattern_variation_counter = 0
+        self.variation_intensity = 0.3
         
-        # 808音色参数
+        # 808音色参数（带平滑过渡）
         self.drum_params = {
-            'kick': {'pitch': 1.0, 'decay': 0.5, 'tone': 0.5},
-            'snare': {'pitch': 1.0, 'decay': 0.3, 'tone': 0.5, 'snappy': 0.5},
-            'clap': {'decay': 0.3, 'tone': 0.5},
-            'hihat_closed': {'decay': 0.1, 'tone': 0.7},
-            'hihat_open': {'decay': 0.4, 'tone': 0.7},
-            'tom_high': {'pitch': 1.5, 'decay': 0.3},
-            'tom_mid': {'pitch': 1.0, 'decay': 0.3},
-            'tom_low': {'pitch': 0.7, 'decay': 0.3},
-            'rimshot': {'pitch': 1.0, 'decay': 0.1},
-            'cowbell': {'pitch': 1.0, 'decay': 0.3},
-            'clave': {'pitch': 1.0, 'decay': 0.1},
-            'maracas': {'decay': 0.2},
+            'kick': {'pitch': 1.0, 'pitch_target': 1.0, 'decay': 0.5, 'decay_target': 0.5, 'tone': 0.5, 'tone_target': 0.5},
+            'snare': {'pitch': 1.0, 'pitch_target': 1.0, 'decay': 0.3, 'decay_target': 0.3, 'tone': 0.5, 'tone_target': 0.5, 'snappy': 0.5, 'snappy_target': 0.5},
+            'clap': {'decay': 0.3, 'decay_target': 0.3, 'tone': 0.5, 'tone_target': 0.5},
+            'hihat_closed': {'decay': 0.1, 'decay_target': 0.1, 'tone': 0.7, 'tone_target': 0.7},
+            'hihat_open': {'decay': 0.4, 'decay_target': 0.4, 'tone': 0.7, 'tone_target': 0.7},
+            'tom_high': {'pitch': 1.5, 'pitch_target': 1.5, 'decay': 0.3, 'decay_target': 0.3},
+            'tom_mid': {'pitch': 1.0, 'pitch_target': 1.0, 'decay': 0.3, 'decay_target': 0.3},
+            'tom_low': {'pitch': 0.7, 'pitch_target': 0.7, 'decay': 0.3, 'decay_target': 0.3},
+            'rimshot': {'pitch': 1.0, 'pitch_target': 1.0, 'decay': 0.1, 'decay_target': 0.1},
+            'cowbell': {'pitch': 1.0, 'pitch_target': 1.0, 'decay': 0.3, 'decay_target': 0.3},
+            'clave': {'pitch': 1.0, 'pitch_target': 1.0, 'decay': 0.1, 'decay_target': 0.1},
+            'maracas': {'decay': 0.2, 'decay_target': 0.2},
+            'conga_high': {'pitch': 1.2, 'pitch_target': 1.2, 'decay': 0.35, 'decay_target': 0.35},
+            'conga_low': {'pitch': 0.8, 'pitch_target': 0.8, 'decay': 0.4, 'decay_target': 0.4},
+            'cymbal': {'decay': 0.6, 'decay_target': 0.6},
         }
         
         # 声音状态
         self.drum_envelopes = {k: 0.0 for k in self.drum_kits.keys()}
         self.drum_phases = {k: 0.0 for k in self.drum_kits.keys()}
         
-        # 音量和效果
-        self.master_volume = 0.6
+        # 音量和效果（带平滑）
+        self.master_volume = 0.65
+        self.master_volume_target = 0.65
         self.drum_volumes = {k: 0.8 for k in self.drum_kits.keys()}
-        self.swing = 0.0  # 摇摆感
+        self.drum_volumes_target = {k: 0.8 for k in self.drum_kits.keys()}
+        
+        self.swing = 0.0
+        self.swing_target = 0.0
         
         # 混响和压缩
-        self.reverb_buffer = np.zeros(int(sample_rate * 0.3))
+        self.reverb_buffer = np.zeros(int(sample_rate * 0.4))
         self.reverb_index = 0
         self.reverb_amount = 0.2
+        self.reverb_amount_target = 0.2
         self.compression_ratio = 0.8
+        
+        # 延迟效果
+        self.delay_buffer = np.zeros(int(sample_rate * 0.5))
+        self.delay_index = 0
+        self.delay_amount = 0.15
+        self.delay_feedback = 0.3
+        
+        # 滤波器
+        self.filter_state = 0.0
+        self.filter_cutoff = 0.8
+        self.filter_resonance = 0.3
         
         # 手势控制状态
         self.hand_y = 0.5
@@ -352,7 +403,90 @@ class TR808Sequencer:
         self.finger_count = 0
         
         # 显示参数
-        self.display_mode = 'pattern'  # 'pattern' 或 'edit'
+        self.display_mode = 'pattern'
+        
+    def _smooth_parameter(self, current, target, speed=0.02):
+        """平滑参数过渡"""
+        return current + (target - current) * speed
+    
+    def _update_smooth_parameters(self):
+        """更新所有平滑参数"""
+        # BPM平滑
+        self.tempo = self._smooth_parameter(self.tempo, self.tempo_target, self.tempo_smoothing)
+        
+        # 摇摆平滑
+        self.swing = self._smooth_parameter(self.swing, self.swing_target, 0.03)
+        
+        # 音量平滑
+        self.master_volume = self._smooth_parameter(self.master_volume, self.master_volume_target, 0.02)
+        for k in self.drum_volumes:
+            self.drum_volumes[k] = self._smooth_parameter(self.drum_volumes[k], self.drum_volumes_target[k], 0.02)
+        
+        # 混响平滑
+        self.reverb_amount = self._smooth_parameter(self.reverb_amount, self.reverb_amount_target, 0.02)
+        
+        # 鼓参数平滑
+        for drum, params in self.drum_params.items():
+            if 'pitch_target' in params:
+                params['pitch'] = self._smooth_parameter(params['pitch'], params['pitch_target'], 0.02)
+            if 'decay_target' in params:
+                params['decay'] = self._smooth_parameter(params['decay'], params['decay_target'], 0.02)
+            if 'tone_target' in params:
+                params['tone'] = self._smooth_parameter(params['tone'], params['tone_target'], 0.02)
+            if 'snappy_target' in params:
+                params['snappy'] = self._smooth_parameter(params['snappy'], params['snappy_target'], 0.02)
+        
+        # 风格权重平滑过渡
+        for style in self.style_weights:
+            if style == self.style_target:
+                target = 1.0
+            else:
+                target = 0.0
+            self.style_weights[style] = self._smooth_parameter(self.style_weights[style], target, self.style_transition_speed)
+    
+    def _blend_patterns(self):
+        """混合多个风格模式"""
+        blended = {k: [0.0]*16 for k in self.drum_kits.keys()}
+        
+        for style, weight in self.style_weights.items():
+            if weight > 0.01 and style in self.patterns:
+                pattern = self.patterns[style]
+                for drum, steps in pattern.items():
+                    for i in range(min(len(steps), 16)):
+                        blended[drum][i] += steps[i] * weight
+        
+        # 添加随机变化
+        if self.variation_intensity > 0:
+            for drum in blended:
+                for i in range(16):
+                    if np.random.random() < self.variation_intensity * 0.1:
+                        blended[drum][i] = min(1.0, blended[drum][i] + np.random.uniform(0, 0.3))
+        
+        return blended
+    
+    def _generate_variation(self):
+        """生成节奏变奏（增强版）"""
+        self.pattern_variation_counter += 1
+        
+        # 每4个循环添加一些变化
+        if self.pattern_variation_counter % 4 == 0:
+            # 随机添加一些打击乐
+            extra_drums = ['tom_high', 'tom_mid', 'tom_low', 'rimshot', 'cowbell', 'clave', 'maracas', 'conga_high', 'conga_low']
+            for drum in extra_drums:
+                if np.random.random() < 0.25 * self.variation_intensity:
+                    pos = np.random.randint(0, 16)
+                    self.generated_pattern[drum][pos] = np.random.uniform(0.5, 1.0)
+        
+        # 每8个循环添加镲片
+        if self.pattern_variation_counter % 8 == 0:
+            if np.random.random() < 0.3:
+                pos = np.random.randint(0, 16)
+                self.generated_pattern['cymbal'][pos] = 0.7
+        
+        # 每16个循环清除变化
+        if self.pattern_variation_counter % 16 == 0:
+            for drum in ['tom_high', 'tom_mid', 'tom_low', 'rimshot', 'cowbell', 'clave', 'maracas', 'conga_high', 'conga_low', 'cymbal']:
+                self.generated_pattern[drum] = [0]*16
         
     def start(self):
         self.running = True
@@ -378,7 +512,7 @@ class TR808Sequencer:
             self.running = False
     
     def _generate_808_kick(self):
-        """生成TR-808风格底鼓"""
+        """生成TR-808风格底鼓（增强版）"""
         output = np.zeros(self.buffer_size)
         if self.drum_envelopes['kick'] > 0.01:
             params = self.drum_params['kick']
@@ -387,69 +521,103 @@ class TR808Sequencer:
             tone = params['tone']
             
             for i in range(self.buffer_size):
-                # 808标志性的正弦波下滑音
-                freq = (55 + tone * 100) * pitch * np.exp(-self.drum_phases['kick'] * (3 + decay * 5))
-                freq = max(20, freq)
+                # 多层频率下滑
+                freq1 = (45 + tone * 80) * pitch * np.exp(-self.drum_phases['kick'] * (2 + decay * 4))
+                freq2 = (80 + tone * 60) * pitch * np.exp(-self.drum_phases['kick'] * (4 + decay * 6))
+                freq1 = max(20, freq1)
+                freq2 = max(30, freq2)
                 
-                # 主音 + 点击音
-                main_tone = np.sin(self.drum_phases['kick'] * 2 * np.pi * freq / self.sample_rate)
-                click = np.sin(self.drum_phases['kick'] * 2 * np.pi * 1000 / self.sample_rate) * np.exp(-self.drum_phases['kick'] * 50)
+                # 主音层
+                main_tone = np.sin(self.drum_phases['kick'] * 2 * np.pi * freq1 / self.sample_rate)
+                # 次谐波层
+                sub_tone = np.sin(self.drum_phases['kick'] * 2 * np.pi * freq2 / self.sample_rate) * 0.6
+                # 点击音
+                click = np.sin(self.drum_phases['kick'] * 2 * np.pi * 1200 / self.sample_rate) * np.exp(-self.drum_phases['kick'] * 80)
+                # 额外 punch
+                punch = np.sin(self.drum_phases['kick'] * 2 * np.pi * 200 / self.sample_rate) * np.exp(-self.drum_phases['kick'] * 30) * 0.3
                 
-                output[i] = (main_tone * 0.9 + click * 0.1) * self.drum_envelopes['kick']
+                output[i] = (main_tone * 0.5 + sub_tone * 0.35 + click * 0.08 + punch * 0.07) * self.drum_envelopes['kick']
                 self.drum_phases['kick'] += 1
-                self.drum_envelopes['kick'] *= (0.998 - decay * 0.003)
+                self.drum_envelopes['kick'] *= (0.9985 - decay * 0.002)
         return output * self.drum_volumes['kick']
     
     def _generate_808_snare(self):
-        """生成TR-808风格军鼓"""
+        """生成TR-808风格军鼓（增强版）"""
         output = np.zeros(self.buffer_size)
         if self.drum_envelopes['snare'] > 0.01:
             params = self.drum_params['snare']
             pitch = params['pitch']
             decay = params['decay']
             snappy = params['snappy']
+            tone_val = params.get('tone', 0.5)
+            
+            # 噪声滤波状态
+            if not hasattr(self, '_snare_noise_state'):
+                self._snare_noise_state = 0.0
             
             for i in range(self.buffer_size):
-                # 主体音调
-                freq = 180 * pitch
-                tone = np.sin(self.drum_phases['snare'] * 2 * np.pi * freq / self.sample_rate)
-                tone += np.sin(self.drum_phases['snare'] * 2 * np.pi * freq * 1.5 / self.sample_rate) * 0.5
+                # 多层主体音调
+                freq1 = 160 * pitch
+                freq2 = 200 * pitch * (1 + tone_val * 0.3)
+                freq3 = 320 * pitch
                 
-                # 噪声层（snappy）
-                noise = np.random.uniform(-1, 1) * snappy
+                tone1 = np.sin(self.drum_phases['snare'] * 2 * np.pi * freq1 / self.sample_rate)
+                tone2 = np.sin(self.drum_phases['snare'] * 2 * np.pi * freq2 / self.sample_rate) * 0.4
+                tone3 = np.sin(self.drum_phases['snare'] * 2 * np.pi * freq3 / self.sample_rate) * 0.2
                 
-                # 高通滤波的噪声
-                hpf_noise = noise * 0.7
+                # 带通噪声层
+                raw_noise = np.random.uniform(-1, 1)
+                # 简单带通滤波
+                self._snare_noise_state = 0.4 * self._snare_noise_state + 0.6 * raw_noise
+                bpf_noise = self._snare_noise_state * snappy * 0.8
                 
-                output[i] = (tone * (1 - snappy * 0.5) + hpf_noise) * self.drum_envelopes['snare']
+                # 高频噪声
+                hpf_noise = (raw_noise - self._snare_noise_state) * snappy * 0.5
+                
+                output[i] = ((tone1 + tone2 + tone3) * (1 - snappy * 0.4) + bpf_noise + hpf_noise) * self.drum_envelopes['snare']
                 self.drum_phases['snare'] += 1
-                self.drum_envelopes['snare'] *= (0.995 - decay * 0.01)
+                self.drum_envelopes['snare'] *= (0.996 - decay * 0.008)
         return output * self.drum_volumes['snare']
     
     def _generate_808_clap(self):
-        """生成TR-808风格拍手"""
+        """生成TR-808风格拍手（增强版）"""
         output = np.zeros(self.buffer_size)
         if self.drum_envelopes['clap'] > 0.01:
             decay = self.drum_params['clap']['decay']
+            tone_val = self.drum_params['clap'].get('tone', 0.5)
+            
+            # 噪声滤波状态
+            if not hasattr(self, '_clap_noise_state'):
+                self._clap_noise_state = [0.0, 0.0]
             
             for i in range(self.buffer_size):
                 # 多层噪声模拟拍手
                 noise1 = np.random.uniform(-1, 1)
                 noise2 = np.random.uniform(-1, 1)
+                noise3 = np.random.uniform(-1, 1)
                 
-                # 带通滤波效果
-                bandpass = (noise1 + noise2 * 0.5) * 0.6
+                # 多级带通滤波
+                self._clap_noise_state[0] = 0.3 * self._clap_noise_state[0] + 0.7 * noise1
+                self._clap_noise_state[1] = 0.5 * self._clap_noise_state[1] + 0.5 * noise2
                 
-                # 添加短促的点击
-                click = np.exp(-self.drum_phases['clap'] * 100) * np.random.uniform(-1, 1) * 0.3
+                bandpass1 = self._clap_noise_state[0] * 0.5
+                bandpass2 = self._clap_noise_state[1] * 0.3
+                bandpass3 = (noise1 + noise3 * 0.5) * 0.2
                 
-                output[i] = (bandpass + click) * self.drum_envelopes['clap']
+                # 多个短促点击
+                click1 = np.exp(-self.drum_phases['clap'] * 120) * np.random.uniform(-1, 1) * 0.2
+                click2 = np.exp(-self.drum_phases['clap'] * 80) * np.random.uniform(-1, 1) * 0.15
+                
+                # 音调成分
+                tone = np.sin(self.drum_phases['clap'] * 2 * np.pi * (800 + tone_val * 400) / self.sample_rate) * np.exp(-self.drum_phases['clap'] * 50) * 0.1
+                
+                output[i] = (bandpass1 + bandpass2 + bandpass3 + click1 + click2 + tone) * self.drum_envelopes['clap']
                 self.drum_phases['clap'] += 1
-                self.drum_envelopes['clap'] *= (0.994 - decay * 0.01)
+                self.drum_envelopes['clap'] *= (0.995 - decay * 0.008)
         return output * self.drum_volumes['clap']
     
     def _generate_808_hihat(self, is_open=False):
-        """生成TR-808风格踩镲"""
+        """生成TR-808风格踩镲（增强版）"""
         drum_key = 'hihat_open' if is_open else 'hihat_closed'
         output = np.zeros(self.buffer_size)
         
@@ -458,26 +626,36 @@ class TR808Sequencer:
             decay = params['decay']
             tone = params['tone']
             
+            # 滤波状态
+            if not hasattr(self, '_hihat_filter'):
+                self._hihat_filter = [0.0, 0.0, 0.0]
+            
             for i in range(self.buffer_size):
                 # 多个高频方波叠加
                 square_sum = 0
-                for f_mult in [6, 8, 10, 12, 14]:
-                    freq = 8000 * tone * f_mult / 10
+                for f_mult in [5, 6, 8, 10, 12, 14, 16, 18]:
+                    freq = 6000 * tone * f_mult / 10
                     phase = self.drum_phases[drum_key] * 2 * np.pi * freq / self.sample_rate
-                    square_sum += np.sign(np.sin(phase)) * (1.0 / f_mult)
+                    square_sum += np.sign(np.sin(phase)) * (1.0 / (f_mult * 0.5))
                 
-                # 添加噪声
-                noise = np.random.uniform(-1, 1) * 0.3
+                # 多层噪声
+                noise1 = np.random.uniform(-1, 1)
+                noise2 = np.random.uniform(-1, 1)
                 
-                output[i] = (square_sum * 0.7 + noise) * self.drum_envelopes[drum_key]
+                # 高通滤波
+                self._hihat_filter[0] = 0.1 * self._hihat_filter[0] + 0.9 * noise1
+                self._hihat_filter[1] = 0.2 * self._hihat_filter[1] + 0.8 * noise2
+                hpf_noise = (noise1 - self._hihat_filter[0]) * 0.5 + (noise2 - self._hihat_filter[1]) * 0.3
+                
+                output[i] = (square_sum * 0.5 + hpf_noise * 0.5) * self.drum_envelopes[drum_key]
                 self.drum_phases[drum_key] += 1
                 
-                decay_rate = 0.985 - decay * 0.02 if is_open else 0.97 - decay * 0.03
+                decay_rate = 0.988 - decay * 0.015 if is_open else 0.965 - decay * 0.02
                 self.drum_envelopes[drum_key] *= decay_rate
         return output * self.drum_volumes[drum_key]
     
     def _generate_808_tom(self, tom_type='mid'):
-        """生成TR-808风格通鼓"""
+        """生成TR-808风格通鼓（增强版）"""
         drum_key = f'tom_{tom_type}'
         output = np.zeros(self.buffer_size)
         
@@ -487,86 +665,152 @@ class TR808Sequencer:
             decay = params['decay']
             
             # 不同通鼓的基础频率
-            base_freqs = {'high': 200, 'mid': 140, 'low': 100}
+            base_freqs = {'high': 220, 'mid': 150, 'low': 100}
             base_freq = base_freqs[tom_type] * pitch
             
             for i in range(self.buffer_size):
-                freq = base_freq * np.exp(-self.drum_phases[drum_key] * 2)
-                freq = max(50, freq)
+                # 多层频率下滑
+                freq1 = base_freq * np.exp(-self.drum_phases[drum_key] * 1.5)
+                freq2 = base_freq * 0.8 * np.exp(-self.drum_phases[drum_key] * 2.5)
+                freq1 = max(50, freq1)
+                freq2 = max(40, freq2)
                 
-                tone = np.sin(self.drum_phases[drum_key] * 2 * np.pi * freq / self.sample_rate)
-                tone += np.sin(self.drum_phases[drum_key] * 2 * np.pi * freq * 2 / self.sample_rate) * 0.3
+                # 主音 + 泛音
+                tone1 = np.sin(self.drum_phases[drum_key] * 2 * np.pi * freq1 / self.sample_rate)
+                tone2 = np.sin(self.drum_phases[drum_key] * 2 * np.pi * freq2 / self.sample_rate) * 0.5
+                tone3 = np.sin(self.drum_phases[drum_key] * 2 * np.pi * freq1 * 2 / self.sample_rate) * 0.2
                 
-                output[i] = tone * self.drum_envelopes[drum_key]
+                # 轻微噪声
+                noise = np.random.uniform(-1, 1) * 0.1
+                
+                output[i] = (tone1 * 0.6 + tone2 * 0.25 + tone3 * 0.1 + noise) * self.drum_envelopes[drum_key]
                 self.drum_phases[drum_key] += 1
-                self.drum_envelopes[drum_key] *= (0.996 - decay * 0.005)
+                self.drum_envelopes[drum_key] *= (0.997 - decay * 0.004)
         return output * self.drum_volumes[drum_key]
     
     def _generate_808_rimshot(self):
-        """生成TR-808风格边击"""
+        """生成TR-808风格边击（增强版）"""
         output = np.zeros(self.buffer_size)
         if self.drum_envelopes['rimshot'] > 0.01:
             pitch = self.drum_params['rimshot']['pitch']
             
             for i in range(self.buffer_size):
-                freq = 800 * pitch
-                tone = np.sin(self.drum_phases['rimshot'] * 2 * np.pi * freq / self.sample_rate)
-                tone += np.sin(self.drum_phases['rimshot'] * 2 * np.pi * freq * 1.5 / self.sample_rate) * 0.5
+                # 多层频率
+                freq1 = 750 * pitch
+                freq2 = 1100 * pitch
                 
-                # 快速衰减
-                output[i] = tone * self.drum_envelopes['rimshot']
+                tone1 = np.sin(self.drum_phases['rimshot'] * 2 * np.pi * freq1 / self.sample_rate)
+                tone2 = np.sin(self.drum_phases['rimshot'] * 2 * np.pi * freq2 / self.sample_rate) * 0.4
+                # 点击成分
+                click = np.exp(-self.drum_phases['rimshot'] * 150) * np.random.uniform(-1, 1) * 0.2
+                
+                output[i] = (tone1 * 0.5 + tone2 * 0.35 + click * 0.15) * self.drum_envelopes['rimshot']
                 self.drum_phases['rimshot'] += 1
-                self.drum_envelopes['rimshot'] *= 0.95
+                self.drum_envelopes['rimshot'] *= 0.94
         return output * self.drum_volumes['rimshot']
     
     def _generate_808_cowbell(self):
-        """生成TR-808风格牛铃"""
+        """生成TR-808风格牛铃（增强版）"""
         output = np.zeros(self.buffer_size)
         if self.drum_envelopes['cowbell'] > 0.01:
             pitch = self.drum_params['cowbell']['pitch']
             decay = self.drum_params['cowbell']['decay']
             
             for i in range(self.buffer_size):
-                # 两个失谐的方波
+                # 多个失谐的方波
                 freq1 = 560 * pitch
                 freq2 = 845 * pitch
+                freq3 = 1120 * pitch
                 
                 square1 = np.sign(np.sin(self.drum_phases['cowbell'] * 2 * np.pi * freq1 / self.sample_rate))
                 square2 = np.sign(np.sin(self.drum_phases['cowbell'] * 2 * np.pi * freq2 / self.sample_rate))
+                square3 = np.sin(self.drum_phases['cowbell'] * 2 * np.pi * freq3 / self.sample_rate) * 0.3
                 
-                output[i] = (square1 * 0.5 + square2 * 0.5) * self.drum_envelopes['cowbell']
+                output[i] = (square1 * 0.4 + square2 * 0.4 + square3 * 0.2) * self.drum_envelopes['cowbell']
                 self.drum_phases['cowbell'] += 1
-                self.drum_envelopes['cowbell'] *= (0.995 - decay * 0.005)
+                self.drum_envelopes['cowbell'] *= (0.996 - decay * 0.004)
         return output * self.drum_volumes['cowbell']
     
     def _generate_808_clave(self):
-        """生成TR-808风格克拉维"""
+        """生成TR-808风格克拉维（增强版）"""
         output = np.zeros(self.buffer_size)
         if self.drum_envelopes['clave'] > 0.01:
             pitch = self.drum_params['clave']['pitch']
             
             for i in range(self.buffer_size):
-                freq = 2500 * pitch
-                tone = np.sin(self.drum_phases['clave'] * 2 * np.pi * freq / self.sample_rate)
+                freq1 = 2500 * pitch
+                freq2 = 3750 * pitch
                 
-                output[i] = tone * self.drum_envelopes['clave']
+                tone1 = np.sin(self.drum_phases['clave'] * 2 * np.pi * freq1 / self.sample_rate)
+                tone2 = np.sin(self.drum_phases['clave'] * 2 * np.pi * freq2 / self.sample_rate) * 0.3
+                
+                output[i] = (tone1 * 0.7 + tone2 * 0.3) * self.drum_envelopes['clave']
                 self.drum_phases['clave'] += 1
-                self.drum_envelopes['clave'] *= 0.92
+                self.drum_envelopes['clave'] *= 0.91
         return output * self.drum_volumes['clave']
     
     def _generate_808_maracas(self):
-        """生成TR-808风格沙锤"""
+        """生成TR-808风格沙锤（增强版）"""
         output = np.zeros(self.buffer_size)
         if self.drum_envelopes['maracas'] > 0.01:
             decay = self.drum_params['maracas']['decay']
             
+            # 滤波状态
+            if not hasattr(self, '_maracas_filter'):
+                self._maracas_filter = 0.0
+            
             for i in range(self.buffer_size):
                 noise = np.random.uniform(-1, 1)
-                # 高通滤波效果
-                output[i] = noise * 0.8 * self.drum_envelopes['maracas']
+                # 高通滤波
+                self._maracas_filter = 0.15 * self._maracas_filter + 0.85 * noise
+                hpf_noise = (noise - self._maracas_filter) * 1.2
+                
+                output[i] = hpf_noise * self.drum_envelopes['maracas']
                 self.drum_phases['maracas'] += 1
-                self.drum_envelopes['maracas'] *= (0.97 - decay * 0.01)
+                self.drum_envelopes['maracas'] *= (0.975 - decay * 0.008)
         return output * self.drum_volumes['maracas']
+    
+    def _generate_808_conga(self, conga_type='high'):
+        """生成TR-808风格康加鼓"""
+        drum_key = f'conga_{conga_type}'
+        if drum_key not in self.drum_envelopes:
+            return np.zeros(self.buffer_size)
+        
+        output = np.zeros(self.buffer_size)
+        if self.drum_envelopes[drum_key] > 0.01:
+            base_freqs = {'high': 300, 'mid': 200, 'low': 140}
+            base_freq = base_freqs.get(conga_type, 200)
+            
+            for i in range(self.buffer_size):
+                freq = base_freq * np.exp(-self.drum_phases[drum_key] * 1.5)
+                freq = max(60, freq)
+                
+                tone = np.sin(self.drum_phases[drum_key] * 2 * np.pi * freq / self.sample_rate)
+                tone += np.sin(self.drum_phases[drum_key] * 2 * np.pi * freq * 2.5 / self.sample_rate) * 0.2
+                # 轻微拍击声
+                slap = np.exp(-self.drum_phases[drum_key] * 80) * np.random.uniform(-1, 1) * 0.15
+                
+                output[i] = (tone * 0.85 + slap * 0.15) * self.drum_envelopes[drum_key]
+                self.drum_phases[drum_key] += 1
+                self.drum_envelopes[drum_key] *= 0.994
+        return output * self.drum_volumes.get(drum_key, 0.6)
+    
+    def _generate_808_cymbal(self):
+        """生成TR-808风格镲片"""
+        output = np.zeros(self.buffer_size)
+        if self.drum_envelopes.get('cymbal', 0) > 0.01:
+            decay = self.drum_params.get('cymbal', {}).get('decay', 0.5)
+            
+            for i in range(self.buffer_size):
+                # 多个高频成分
+                noise = np.random.uniform(-1, 1)
+                shimmer = np.sin(self.drum_phases['cymbal'] * 2 * np.pi * 6000 / self.sample_rate) * 0.3
+                shimmer += np.sin(self.drum_phases['cymbal'] * 2 * np.pi * 8000 / self.sample_rate) * 0.2
+                
+                output[i] = (noise * 0.6 + shimmer * 0.4) * self.drum_envelopes['cymbal']
+                self.drum_phases['cymbal'] += 1
+                self.drum_envelopes['cymbal'] *= (0.992 - decay * 0.003)
+        return output * self.drum_volumes.get('cymbal', 0.5)
     
     def _trigger_drum(self, drum_type):
         """触发鼓音"""
@@ -575,11 +819,17 @@ class TR808Sequencer:
             self.drum_phases[drum_type] = 0.0
     
     def _audio_callback(self, outdata, frames, time_info, status):
-        """音频回调"""
+        """音频回调（先锋版）"""
         output = np.zeros(frames)
         
+        # 更新平滑参数
+        self._update_smooth_parameters()
+        
+        # 生成变奏
+        self._generate_variation()
+        
         # 计算步进
-        step_duration = 60.0 / self.tempo / 4  # 16步 = 4拍
+        step_duration = 60.0 / self.tempo / 4
         step_inc = self.buffer_size / self.sample_rate / step_duration
         self.step_phase += step_inc
         
@@ -588,19 +838,22 @@ class TR808Sequencer:
             self.step_phase -= 1.0
             
             # 应用摇摆
-            swing_offset = 0
+            swing_delay = 0
             if self.current_step % 2 == 1:
-                swing_offset = self.swing * 0.5
+                swing_delay = self.swing * 0.3
             
-            # 获取当前模式
-            if self.display_mode == 'pattern':
-                pattern = self.patterns[self.current_pattern]
-            else:
-                pattern = self.user_pattern
+            # 获取混合模式
+            blended_pattern = self._blend_patterns()
+            
+            # 合并生成的变奏
+            for drum in self.generated_pattern:
+                for i in range(16):
+                    if self.generated_pattern[drum][i] > 0:
+                        blended_pattern[drum][i] = max(blended_pattern[drum][i], self.generated_pattern[drum][i])
             
             # 触发当前步的所有鼓
-            for drum_type, steps in pattern.items():
-                if self.current_step < len(steps) and steps[self.current_step]:
+            for drum_type, steps in blended_pattern.items():
+                if self.current_step < len(steps) and steps[self.current_step] > 0.3:
                     self._trigger_drum(drum_type)
             
             self.current_step = (self.current_step + 1) % self.step_count
@@ -618,88 +871,136 @@ class TR808Sequencer:
         output += self._generate_808_cowbell()
         output += self._generate_808_clave()
         output += self._generate_808_maracas()
+        output += self._generate_808_conga('high')
+        output += self._generate_808_conga('low')
+        output += self._generate_808_cymbal()
         
-        # 应用混响
+        # 应用延迟效果（立体声模拟）
         for i in range(frames):
-            rev_idx = (self.reverb_index - int(len(self.reverb_buffer) * 0.3) + i) % len(self.reverb_buffer)
-            output[i] += self.reverb_buffer[rev_idx] * self.reverb_amount
-            self.reverb_buffer[self.reverb_index] = output[i]
+            # 左声道延迟
+            delay_idx_l = (self.delay_index - int(len(self.delay_buffer) * 0.25) + i) % len(self.delay_buffer)
+            # 右声道延迟（稍长）
+            delay_idx_r = (self.delay_index - int(len(self.delay_buffer) * 0.35) + i) % len(self.delay_buffer)
+            
+            delay_l = self.delay_buffer[delay_idx_l] * self.delay_amount
+            delay_r = self.delay_buffer[delay_idx_r] * self.delay_amount * 0.7
+            
+            output[i] += (delay_l + delay_r) * 0.5
+            self.delay_buffer[self.delay_index] = output[i] * self.delay_feedback + self.delay_buffer[self.delay_index] * 0.6
+            self.delay_index = (self.delay_index + 1) % len(self.delay_buffer)
+        
+        # 应用多层混响
+        for i in range(frames):
+            # 多个延迟线模拟混响
+            rev_idx1 = (self.reverb_index - int(len(self.reverb_buffer) * 0.3) + i) % len(self.reverb_buffer)
+            rev_idx2 = (self.reverb_index - int(len(self.reverb_buffer) * 0.45) + i) % len(self.reverb_buffer)
+            rev_idx3 = (self.reverb_index - int(len(self.reverb_buffer) * 0.6) + i) % len(self.reverb_buffer)
+            
+            reverb_sum = (self.reverb_buffer[rev_idx1] * 0.5 + 
+                         self.reverb_buffer[rev_idx2] * 0.3 + 
+                         self.reverb_buffer[rev_idx3] * 0.2)
+            output[i] += reverb_sum * self.reverb_amount
+            self.reverb_buffer[self.reverb_index] = output[i] * 0.7
             self.reverb_index = (self.reverb_index + 1) % len(self.reverb_buffer)
         
-        # 简单压缩
-        max_val = np.max(np.abs(output))
-        if max_val > 0.8:
-            output = output * (0.8 / max_val) ** self.compression_ratio
+        # 应用动态滤波器
+        alpha = 1.0 - self.filter_cutoff * 0.25
+        for i in range(frames):
+            # 低通
+            self.filter_state = alpha * self.filter_state + (1 - alpha) * output[i]
+            # 共振峰
+            resonance = (output[i] - self.filter_state) * self.filter_resonance * 0.3
+            output[i] = self.filter_state + resonance
         
-        outdata[:, 0] = np.clip(output * self.master_volume, -1, 1).astype(np.float32)
+        # 多段压缩（低频、中频、高频）
+        max_val = np.max(np.abs(output))
+        if max_val > 0.65:
+            # 软压缩曲线
+            ratio = self.compression_ratio
+            output = np.sign(output) * (0.65 + (np.abs(output) - 0.65) * (1 - ratio) * 0.5)
+        
+        # 最终限制器和软削波
+        output = np.tanh(output * 1.3) * 0.85
+        
+        # 直流偏移消除
+        output = output - np.mean(output)
+        
+        outdata[:, 0] = np.clip(output * self.master_volume, -0.99, 0.99).astype(np.float32)
     
     def update_from_gesture(self, hand_y, hand_x, hand_area, finger_count):
-        """从手势更新参数"""
+        """从手势更新参数（平滑过渡）"""
         self.hand_y = hand_y
         self.hand_x = hand_x
         self.hand_area = hand_area
         self.finger_count = finger_count
         
-        # Y位置控制音高/音色参数
-        self.drum_params['kick']['pitch'] = 0.7 + hand_y * 0.6
-        self.drum_params['snare']['snappy'] = 0.3 + hand_y * 0.7
+        # Y位置控制音高/音色参数（设置目标值）
+        self.drum_params['kick']['pitch_target'] = 0.7 + hand_y * 0.6
+        self.drum_params['snare']['snappy_target'] = 0.3 + hand_y * 0.7
+        self.drum_params['kick']['tone_target'] = 0.3 + hand_y * 0.5
         
-        # X位置控制节奏速度
-        self.tempo = 60 + int(hand_x * 140)  # 60-200 BPM
+        # X位置控制节奏速度（设置目标值）
+        self.tempo_target = 60 + int(hand_x * 160)  # 60-220 BPM
         
-        # 面积控制摇摆感
-        self.swing = min(1.0, hand_area / 50000)
+        # 面积控制摇摆感和变化强度
+        self.swing_target = min(1.0, hand_area / 40000)
+        self.variation_intensity = 0.2 + min(0.5, hand_area / 60000)
         
-        # 手指数量切换模式
+        # 手指数量切换模式（设置目标风格）
         pattern_names = list(self.patterns.keys())
-        self.current_pattern = pattern_names[finger_count % len(pattern_names)]
+        self.style_target = pattern_names[finger_count % len(pattern_names)]
+        self.current_pattern = self.style_target
         
         # 手指数量也切换编辑的鼓
         drum_types = ['kick', 'snare', 'clap', 'hihat_closed', 'hihat_open', 'tom_high', 'tom_mid', 'tom_low']
         self.editing_drum = drum_types[finger_count % len(drum_types)]
     
     def update_from_color(self, colors):
-        """从颜色更新音色"""
+        """从颜色更新音色（平滑过渡）"""
         if colors is None or len(colors) == 0:
             return
         
         main_color = colors[0]
         r, g, b = main_color[0] / 255.0, main_color[1] / 255.0, main_color[2] / 255.0
         
-        # 亮度影响衰减
+        # 亮度影响衰减（设置目标值）
         brightness = (r + g + b) / 3
         for drum in self.drum_params:
-            if 'decay' in self.drum_params[drum]:
-                self.drum_params[drum]['decay'] = 0.2 + brightness * 0.4
+            if 'decay_target' in self.drum_params[drum]:
+                self.drum_params[drum]['decay_target'] = 0.2 + brightness * 0.4
         
-        # 饱和度影响音色
+        # 饱和度影响音色（设置目标值）
         max_c = max(r, g, b)
         min_c = min(r, g, b)
         saturation = (max_c - min_c) / max_c if max_c > 0 else 0
         
-        self.drum_params['kick']['tone'] = 0.3 + saturation * 0.5
-        self.drum_params['snare']['tone'] = 0.3 + saturation * 0.5
+        self.drum_params['kick']['tone_target'] = 0.3 + saturation * 0.5
+        self.drum_params['snare']['tone_target'] = 0.3 + saturation * 0.5
         
-        # 混响量
-        self.reverb_amount = 0.1 + saturation * 0.3
+        # 混响量（设置目标值）
+        self.reverb_amount_target = 0.1 + saturation * 0.4
+        
+        # 延迟量
+        self.delay_amount = 0.1 + saturation * 0.2
+        
+        # 滤波器截止
+        self.filter_cutoff = 0.5 + brightness * 0.4
     
     def get_display_info(self):
         """获取显示信息"""
         return {
-            'tempo': self.tempo,
+            'tempo': int(self.tempo),
             'current_step': self.current_step,
             'current_pattern': self.current_pattern,
-            'editing_drum': self.editing_drum,
+            'editing_drum': getattr(self, 'editing_drum', 'kick'),
             'swing': self.swing,
             'step_count': self.step_count,
+            'variation': self.variation_intensity,
         }
     
     def get_pattern_for_display(self):
-        """获取当前模式用于显示"""
-        if self.display_mode == 'pattern':
-            return self.patterns[self.current_pattern]
-        else:
-            return self.user_pattern
+        """获取当前混合模式用于显示"""
+        return self._blend_patterns()
 
 
 class AdvancedSampler:
@@ -2043,15 +2344,28 @@ def create_ascii_art(image, contour, mask, synth=None, sampler=None):
             base_char_idx = int(brightness_jitter / 255 * (len(chars_to_use) - 1))
             
             # 模式6：采样器模式 - 字符种类随采样器参数变化
-            if sampler is not None:
-                # 基于位置的多样性
+            if sampler is not None and hasattr(sampler, 'drum_kits'):
+                # TR-808音序器模式
+                pos_variety = (row * 7 + col * 11 + int(phase_offsets[row, col] * 100)) % 8
+                
+                # 音序器参数影响字符种类
+                step_variety = sampler.current_step % 8  # 当前步影响
+                tempo_variety = int((sampler.tempo - 60) / 20) % 6  # 节奏影响
+                pattern_variety = hash(sampler.current_pattern) % 5  # 模式影响
+                swing_variety = int(sampler.swing * 10) % 4  # 摇摆影响
+                
+                # 组合偏移
+                total_variety = pos_variety + step_variety + tempo_variety + pattern_variety + swing_variety
+                char_idx = (base_char_idx + total_variety) % len(chars_to_use)
+            elif sampler is not None:
+                # 旧版采样器模式
                 pos_variety = (row * 7 + col * 11 + int(phase_offsets[row, col] * 100)) % 8
                 
                 # 采样器参数影响字符种类
-                note_variety = (sampler.base_note - 48) % 12  # 音高影响
+                note_variety = (getattr(sampler, 'base_note', 60) - 48) % 12  # 音高影响
                 tempo_variety = int((sampler.tempo - 60) / 20) % 6  # 节奏影响
-                scale_variety = hash(sampler.current_scale) % 5  # 音阶影响
-                inst_variety = hash(sampler.current_instrument) % 4  # 音色影响
+                scale_variety = hash(getattr(sampler, 'current_scale', 'pentatonic')) % 5  # 音阶影响
+                inst_variety = hash(getattr(sampler, 'current_instrument', 'piano')) % 4  # 音色影响
                 
                 # 组合偏移
                 total_variety = pos_variety + note_variety + tempo_variety + scale_variety + inst_variety
@@ -2345,11 +2659,12 @@ def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None, sam
     
     # 采样器模式特殊UI - TR-808音序器显示
     if current_mode == MODE_SAMPLER and sampler_params is not None:
-        tempo, current_step, pattern_name, editing_drum, swing, step_count = sampler_params
+        tempo, current_step, pattern_name, editing_drum, swing, step_count = sampler_params[:6]
+        variation = sampler_params[6] if len(sampler_params) > 6 else 0.3
         # 在顶部右侧显示音序器参数
-        info_x = w - 350
+        info_x = w - 380
         cv2.putText(image, f'TR-808 {tempo}BPM Step:{current_step+1}/{step_count}', (info_x, int(h * 0.035)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (255, 200, 100), 1)
-        cv2.putText(image, f'{pattern_name.upper()} Swing:{swing:.1%} Edit:{editing_drum}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
+        cv2.putText(image, f'{pattern_name.upper()} Swing:{swing:.0%} Var:{variation:.0%}', (info_x, int(h * 0.065)), cv2.FONT_HERSHEY_SIMPLEX, font_scale_small, (100, 255, 200), 1)
         
         # 绘制16步音序器网格
         grid_x = w - 380
@@ -2375,9 +2690,11 @@ def draw_ui(image, fps, current_mode, color_centers=None, synth_params=None, sam
                         else:
                             cv2.rectangle(image, (x, y), (x + step_width - 2, y + step_height), (40, 40, 40), -1)
                         
-                        # 激活的步骤
-                        if pattern[drum_type][step]:
-                            cv2.rectangle(image, (x, y), (x + step_width - 2, y + step_height), drum_colors[row], -1)
+                        # 激活的步骤（带强度显示）
+                        intensity = pattern[drum_type][step]
+                        if intensity > 0.1:
+                            color = tuple(int(c * min(1.0, intensity)) for c in drum_colors[row])
+                            cv2.rectangle(image, (x, y), (x + step_width - 2, y + step_height), color, -1)
                         
                         # 边框
                         cv2.rectangle(image, (x, y), (x + step_width - 2, y + step_height), (100, 100, 100), 1)
@@ -2591,7 +2908,7 @@ def main():
                 # 获取显示信息
                 info = sampler.get_display_info()
                 sampler_params = (info['tempo'], info['current_step'], info['current_pattern'], 
-                                 info['editing_drum'], info['swing'], info['step_count'])
+                                 info['editing_drum'], info['swing'], info['step_count'], info['variation'])
         else:
             # 停止采样器（切换模式时）
             if sampler is not None:
