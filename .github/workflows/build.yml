@@ -46,46 +46,29 @@ jobs:
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip setuptools wheel
-        pip install buildozer cython==0.29.36
-        pip install 'kivy[base]'
-    
-    - name: Setup Android NDK
-      run: |
-        echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
-        echo "ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
-        echo "Using NDK: $ANDROID_NDK_LATEST_HOME"
-        ls -la $ANDROID_NDK_LATEST_HOME || true
+        pip install buildozer==1.5.0 cython==0.29.36
     
     - name: Prepare source files
       run: |
-        mv main_android.py main.py
+        cp main_android.py main.py
         ls -la *.py
     
     - name: Cache Buildozer global
       uses: actions/cache@v4
       with:
         path: ~/.buildozer
-        key: ${{ runner.os }}-buildozer-global-v2-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-global-v3-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-global-v2-
-    
-    - name: Cache Buildozer project
-      uses: actions/cache@v4
-      with:
-        path: .buildozer
-        key: ${{ runner.os }}-buildozer-project-v2-${{ hashFiles('buildozer.spec') }}
-        restore-keys: |
-          ${{ runner.os }}-buildozer-project-v2-
-    
-    - name: Initialize Buildozer
-      run: |
-        buildozer init || true
+          ${{ runner.os }}-buildozer-global-v3-
     
     - name: Build APK
-      id: build
       run: |
+        export ANDROID_HOME=/usr/local/lib/android/sdk
+        export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+        
         buildozer android debug 2>&1 | tee build.log
-        echo "build_status=success" >> $GITHUB_OUTPUT
+        echo "build_status=success" >> $GITHUB_OUTPUT || true
     
     - name: Find APK files
       if: always()
@@ -95,7 +78,6 @@ jobs:
         ls -la bin/ 2>/dev/null || echo "No bin directory"
     
     - name: Upload APK artifact
-      if: steps.build.outputs.build_status == 'success'
       uses: actions/upload-artifact@v4
       with:
         name: hand-gesture-apk-${{ env.APP_VERSION }}

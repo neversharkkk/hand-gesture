@@ -106,7 +106,7 @@ python main.py
 - 音频输出设备（合成器模式）
 
 ### Android端
-- Android 7.0 (API 24) 或更高版本
+- Android 5.0 (API 21) 或更高版本
 - 摄像头权限
 - 音频输出设备（合成器模式）
 

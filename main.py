@@ -244,16 +244,18 @@ class AdvancedSampler:
         self.running = False
         self.thread = None
         
-        # 音阶定义（五声音阶 + 自然音阶，美妙动听）
+        # 音阶定义（扩展更多音阶）
         self.scales = {
             'pentatonic': [0, 2, 4, 7, 9],
             'major': [0, 2, 4, 5, 7, 9, 11],
             'minor': [0, 2, 3, 5, 7, 8, 10],
             'dorian': [0, 2, 3, 5, 7, 9, 10],
             'mixolydian': [0, 2, 4, 5, 7, 9, 10],
+            'blues': [0, 3, 5, 6, 7, 10],
+            'harmonic_minor': [0, 2, 3, 5, 7, 8, 11],
         }
         
-        # 音色库定义（更多参数）
+        # 音色库定义
         self.instruments = {
             'piano': {'attack': 0.005, 'decay': 0.3, 'sustain': 0.4, 'release': 0.5, 'bright': 0.8, 'harm': [1, 0.5, 0.25, 0.125]},
             'pad': {'attack': 0.3, 'decay': 0.2, 'sustain': 0.8, 'release': 1.2, 'bright': 0.3, 'harm': [1, 0.7, 0.5, 0.3]},
@@ -272,12 +274,51 @@ class AdvancedSampler:
         self.melody_index = 0
         self.beat_phase = 0.0
         
-        # 多通道
-        self.num_channels = 4  # 旋律、和声、低音、鼓
-        self.channel_volumes = [0.4, 0.25, 0.2, 0.15]
+        # 旋律生成参数
+        self.last_melody_note = 60
+        self.melody_direction = 1  # 1=上行, -1=下行
+        self.melody_contour_counter = 0
+        self.variation_mode = 0  # 变奏模式
         
-        # 鼓点参数
-        self.drum_pattern = [1, 0, 0, 1, 0, 0, 1, 0]  # 8步节奏
+        # 节奏型定义（切分音、附点音符）
+        self.rhythm_patterns = [
+            [1.0, 0.5, 0.5, 1.0],  # 基础四分音符+八分音符
+            [0.5, 0.5, 1.0, 0.5, 0.5],  # 切分音
+            [1.5, 0.5, 1.0],  # 附点音符
+            [0.5, 1.0, 0.5, 1.0],  # 反切分
+            [1.0, 0.25, 0.25, 0.5, 1.0],  # 十六分音符组合
+        ]
+        self.current_rhythm_pattern = 0
+        self.rhythm_position = 0
+        self.sub_beat_phase = 0.0
+        
+        # 装饰音参数
+        self.grace_note_active = False
+        self.grace_note_freq = 0.0
+        self.grace_note_env = 0.0
+        self.grace_note_phase = 0.0
+        self.trill_active = False
+        self.trill_freq = 0.0
+        self.trill_counter = 0
+        self.trill_phase = 0.0
+        self.glide_active = False
+        self.glide_start_freq = 0.0
+        self.glide_end_freq = 0.0
+        self.glide_phase = 0.0
+        self.glide_note_phase = 0.0
+        
+        # 多通道
+        self.num_channels = 4
+        self.channel_volumes = [0.35, 0.2, 0.15, 0.3]
+        
+        # 鼓点参数（扩展节奏型）
+        self.drum_patterns = [
+            [1, 0, 0, 1, 0, 0, 1, 0],  # 基础4/4
+            [1, 0, 0.5, 0, 1, 0, 0.5, 0],  # 带弱拍
+            [1, 0.5, 0, 1, 0, 0.5, 0, 0],  # 切分鼓点
+            [1, 0, 1, 0, 0.5, 0, 1, 0.5],  # 复杂节奏
+        ]
+        self.drum_pattern_index = 0
         self.drum_index = 0
         self.kick_phase = 0.0
         self.snare_phase = 0.0
@@ -295,7 +336,7 @@ class AdvancedSampler:
         self.color_mood = 'neutral'
         self.color_energy = 0.5
         
-        # 振荡器状态（扩展到更多通道）
+        # 振荡器状态
         self.phases = [0.0] * 16
         self.envelopes = [0.0] * 16
         self.note_frequencies = [440.0] * 16
@@ -305,7 +346,7 @@ class AdvancedSampler:
         self.filter_state = [0.0] * 16
         self.filter_cutoff = 2000.0
         
-        # 效果缓冲（更大更好的混响）
+        # 效果缓冲
         self.reverb_buffers = [
             np.zeros(int(sample_rate * 0.5)),
             np.zeros(int(sample_rate * 0.7)),
@@ -346,11 +387,11 @@ class AdvancedSampler:
         if self.kick_env > 0.01:
             for i in range(self.buffer_size):
                 # 频率下降的正弦波
-                freq = 150 * np.exp(-self.kick_phase * 10) + 40
+                freq = 150 * np.exp(-self.kick_phase * 8) + 50
                 output[i] = np.sin(self.kick_phase * 2 * np.pi * freq / self.sample_rate)
                 self.kick_phase += 1
-                self.kick_env *= 0.995
-        return output * self.kick_env * 0.8
+                self.kick_env *= 0.997
+        return output * self.kick_env * 1.2
     
     def _generate_snare(self):
         """生成军鼓"""
@@ -358,12 +399,12 @@ class AdvancedSampler:
         if self.snare_env > 0.01:
             for i in range(self.buffer_size):
                 # 正弦波 + 噪声
-                tone = np.sin(self.snare_phase * 2 * np.pi * 200 / self.sample_rate)
-                noise = np.random.uniform(-1, 1) * 0.5
-                output[i] = (tone * 0.6 + noise * 0.4)
+                tone = np.sin(self.snare_phase * 2 * np.pi * 180 / self.sample_rate)
+                noise = np.random.uniform(-1, 1) * 0.6
+                output[i] = (tone * 0.5 + noise * 0.5)
                 self.snare_phase += 1
-                self.snare_env *= 0.99
-        return output * self.snare_env * 0.5
+                self.snare_env *= 0.992
+        return output * self.snare_env * 0.9
     
     def _generate_hihat(self):
         """生成踩镲"""
@@ -373,9 +414,9 @@ class AdvancedSampler:
                 # 高频噪声
                 noise = np.random.uniform(-1, 1)
                 # 高通滤波效果
-                output[i] = noise * 0.8
-                self.hihat_env *= 0.985
-        return output * self.hihat_env * 0.3
+                output[i] = noise * 0.9
+                self.hihat_env *= 0.988
+        return output * self.hihat_env * 0.5
     
     def _generate_note(self, note_idx, instrument=None):
         """生成单个音符的波形（改进音质）"""
@@ -394,27 +435,71 @@ class AdvancedSampler:
         wave = np.zeros(self.buffer_size)
         
         for h, amp in enumerate(harmonics, 1):
-            # 添加轻微失谐增加丰富度
             detune = 1.0 + (h - 1) * 0.001
             wave += amp * np.sin((phase + phase_inc * np.arange(self.buffer_size)) * h * detune)
         
         # 添加次谐波增加温暖感
         wave += np.sin((phase + phase_inc * np.arange(self.buffer_size)) * 0.5) * 0.15 * self.warmth
         
-        # 应用低通滤波器使声音更柔和
+        # 应用低通滤波器
         alpha = 0.3
         for i in range(len(wave)):
             self.filter_state[note_idx] = alpha * wave[i] + (1 - alpha) * self.filter_state[note_idx]
             wave[i] = self.filter_state[note_idx]
         
-        # 更新相位
         self.phases[note_idx] = phase + phase_inc * self.buffer_size
         
-        # 应用包络衰减
         decay_rate = 0.9995 if inst['sustain'] > 0.5 else 0.999
         self.envelopes[note_idx] *= decay_rate
         
         return wave * env * self.volume
+    
+    def _generate_grace_note(self):
+        """生成倚音（装饰音）"""
+        output = np.zeros(self.buffer_size)
+        if self.grace_note_env > 0.01:
+            phase_inc = 2 * np.pi * self.grace_note_freq / self.sample_rate
+            for i in range(self.buffer_size):
+                output[i] = np.sin(self.grace_note_phase) * self.grace_note_env
+                self.grace_note_phase += phase_inc
+                self.grace_note_env *= 0.95  # 快速衰减
+        return output * 0.3
+    
+    def _generate_trill(self, base_freq):
+        """生成颤音"""
+        output = np.zeros(self.buffer_size)
+        if self.trill_active:
+            trill_freq = base_freq * (2 ** (1/12))  # 上方二度音
+            phase_inc_base = 2 * np.pi * base_freq / self.sample_rate
+            phase_inc_trill = 2 * np.pi * trill_freq / self.sample_rate
+            
+            for i in range(self.buffer_size):
+                # 快速交替两个音
+                if (self.trill_counter // 100) % 2 == 0:
+                    output[i] = np.sin(self.trill_phase) * 0.5
+                    self.trill_phase += phase_inc_base
+                else:
+                    output[i] = np.sin(self.trill_phase) * 0.5
+                    self.trill_phase += phase_inc_trill
+                self.trill_counter += 1
+        return output
+    
+    def _generate_glide(self):
+        """生成滑音（portamento）"""
+        output = np.zeros(self.buffer_size)
+        if self.glide_active and self.glide_phase < 1.0:
+            # 线性插值频率
+            current_freq = self.glide_start_freq + (self.glide_end_freq - self.glide_start_freq) * self.glide_phase
+            phase_inc = 2 * np.pi * current_freq / self.sample_rate
+            
+            for i in range(self.buffer_size):
+                output[i] = np.sin(self.glide_note_phase) * 0.5
+                self.glide_note_phase += phase_inc
+            
+            self.glide_phase += 0.02  # 滑音速度
+            if self.glide_phase >= 1.0:
+                self.glide_active = False
+        return output
     
     def _audio_callback(self, outdata, frames, time_info, status):
         """音频回调函数"""
@@ -436,6 +521,10 @@ class AdvancedSampler:
             if self.note_active[i]:
                 note_wave = self._generate_note(i)
                 output += note_wave * self.channel_volumes[0] / self.num_instruments
+        
+        # 生成装饰音
+        output += self._generate_grace_note() * 0.3
+        output += self._generate_glide() * 0.2
         
         # 生成和声通道
         if self.num_instruments >= 2:
@@ -475,43 +564,97 @@ class AdvancedSampler:
         outdata[:, 0] = np.clip(output, -1, 1).astype(np.float32)
     
     def _trigger_next_notes(self):
-        """触发下一组音符"""
+        """触发下一组音符（增强旋律逻辑）"""
         scale = self.scales[self.current_scale]
+        scale_len = len(scale)
         
-        # 旋律
+        # 旋律生成 - 增加音程变化和跳进
         for i in range(min(self.num_instruments, 4)):
-            melody_offset = (self.melody_index + i * 2) % len(scale)
-            octave = (self.melody_index // len(scale)) % 2
+            # 基础音阶位置
+            base_offset = self.melody_index % scale_len
+            
+            # 引入跳进音程（每隔几个音符跳进）
+            if self.melody_contour_counter % 4 == 0:
+                # 跳进：向上或向下跳三度或五度
+                jump_interval = [2, 4, -2, -4][self.melody_contour_counter % 4]
+                melody_offset = (base_offset + jump_interval) % scale_len
+            else:
+                # 级进：按音阶顺序
+                melody_offset = base_offset
+            
+            # 八度变化（根据旋律方向）
+            octave = (self.melody_index // scale_len) % 2
+            if self.melody_direction > 0 and self.melody_contour_counter > 6:
+                octave = min(octave + 1, 2)  # 上行时提高八度
+            elif self.melody_direction < 0 and self.melody_contour_counter > 6:
+                octave = max(octave - 1, 0)  # 下行时降低八度
+            
             note = self.base_note + scale[melody_offset] + octave * 12
+            
+            # 应用滑音效果（每隔几个音符）
+            if i == 0 and self.melody_index % 3 == 0:
+                self.glide_active = True
+                self.glide_start_freq = self.note_frequencies[i]
+                self.glide_end_freq = 440.0 * (2.0 ** ((note - 69) / 12.0))
+                self.glide_phase = 0.0
+                self.glide_note_phase = 0.0
+            
             self.note_frequencies[i] = 440.0 * (2.0 ** ((note - 69) / 12.0))
             self.note_active[i] = True
             self.envelopes[i] = 1.0
+            
+            # 添加倚音装饰（随机概率）
+            if i == 0 and np.random.random() < 0.2:
+                self.grace_note_freq = self.note_frequencies[i] * (2 ** (2/12))  # 上方二度
+                self.grace_note_env = 0.8
+                self.grace_note_phase = 0.0
+            
+            self.last_melody_note = note
         
-        # 和声（三度音程）
+        # 和声（三度、五度音程组合）
         if self.num_instruments >= 2:
             for i in range(4, 6):
-                harmony_offset = (self.melody_index + (i - 4) * 2 + 2) % len(scale)
+                # 三度或五度和声
+                interval = 2 if i == 4 else 4
+                harmony_offset = (self.melody_index + interval) % scale_len
                 note = self.base_note + scale[harmony_offset] - 12
                 self.note_frequencies[i] = 440.0 * (2.0 ** ((note - 69) / 12.0))
                 self.note_active[i] = True
                 self.envelopes[i] = 0.7
         
-        # 低音
+        # 低音（根音+五度交替）
         if self.num_instruments >= 3:
-            bass_note = self.base_note - 24 + scale[self.melody_index % len(scale)]
+            bass_interval = 0 if self.melody_index % 2 == 0 else 4
+            bass_note = self.base_note - 24 + scale[(self.melody_index + bass_interval) % scale_len]
             self.note_frequencies[8] = 440.0 * (2.0 ** ((bass_note - 69) / 12.0))
             self.note_active[8] = True
             self.envelopes[8] = 0.9
         
-        self.melody_index = (self.melody_index + 1) % (len(scale) * 4)
+        # 更新旋律状态
+        self.melody_index = (self.melody_index + 1) % (scale_len * 8)
+        self.melody_contour_counter += 1
+        
+        # 定期改变旋律方向
+        if self.melody_contour_counter > 8:
+            self.melody_direction *= -1
+            self.melody_contour_counter = 0
+        
+        # 变奏模式切换
+        if self.melody_index % (scale_len * 4) == 0:
+            self.variation_mode = (self.variation_mode + 1) % 3
     
     def _trigger_drums(self):
-        """触发鼓点"""
-        pattern_step = self.drum_index % len(self.drum_pattern)
+        """触发鼓点（扩展节奏型）"""
+        drum_pattern = self.drum_patterns[self.drum_pattern_index]
+        pattern_step = self.drum_index % len(drum_pattern)
+        pattern_value = drum_pattern[pattern_step]
         
-        # 底鼓：第1和第5拍
-        if pattern_step in [0, 4]:
+        # 底鼓
+        if pattern_value >= 1:
             self.kick_env = 1.0
+            self.kick_phase = 0.0
+        elif pattern_value == 0.5:
+            self.kick_env = 0.5
             self.kick_phase = 0.0
         
         # 军鼓：第3和第7拍
@@ -519,12 +662,20 @@ class AdvancedSampler:
             self.snare_env = 1.0
             self.snare_phase = 0.0
         
-        # 踩镲：每拍
-        if self.drum_pattern[pattern_step]:
-            self.hihat_env = 0.6
-            self.hihat_phase = 0.0
+        # 踩镲：根据模式
+        if self.drum_pattern_index == 0:
+            if pattern_step % 2 == 0:
+                self.hihat_env = 0.6
+        elif self.drum_pattern_index == 1:
+            self.hihat_env = 0.4
+        else:
+            self.hihat_env = 0.5
         
         self.drum_index += 1
+        
+        # 定期切换鼓点模式
+        if self.drum_index % 16 == 0:
+            self.drum_pattern_index = (self.drum_pattern_index + 1) % len(self.drum_patterns)
     
     def update_from_gesture(self, hand_y, hand_x, hand_area, finger_count):
         """从手势更新采样器参数"""
@@ -534,12 +685,32 @@ class AdvancedSampler:
         # 手的X位置控制节奏（更大范围）
         self.tempo = 40 + int(hand_x * 180)  # 40-220 BPM
         
-        # 手的面积控制乐器数量
+        # 手的面积控制乐器数量和节奏型
         self.num_instruments = max(1, min(4, int(hand_area / 12000) + 1))
+        
+        # 根据面积切换节奏型
+        if hand_area > 40000:
+            self.current_rhythm_pattern = 4  # 复杂节奏
+            self.drum_pattern_index = 3
+        elif hand_area > 30000:
+            self.current_rhythm_pattern = 2  # 附点音符
+            self.drum_pattern_index = 2
+        elif hand_area > 20000:
+            self.current_rhythm_pattern = 1  # 切分音
+            self.drum_pattern_index = 1
+        else:
+            self.current_rhythm_pattern = 0  # 基础
+            self.drum_pattern_index = 0
         
         # 手指数量控制音阶
         scale_names = list(self.scales.keys())
         self.current_scale = scale_names[finger_count % len(scale_names)]
+        
+        # 手指数量也影响装饰音
+        if finger_count >= 4:
+            self.trill_active = True  # 开启颤音
+        else:
+            self.trill_active = False
     
     def update_from_color(self, colors):
         """从颜色更新音色"""
@@ -989,6 +1160,10 @@ def create_ascii_art(image, contour, mask, synth=None, sampler=None):
     # 获取手部边界框
     x, y, cw, ch = cv2.boundingRect(contour)
     
+    # 验证边界框有效性
+    if cw <= 0 or ch <= 0:
+        return image
+    
     # 扩展边界框
     padding = 10
     x = max(0, x - padding)
@@ -996,12 +1171,44 @@ def create_ascii_art(image, contour, mask, synth=None, sampler=None):
     cw = min(w - x, cw + 2 * padding)
     ch = min(h - y, ch + 2 * padding)
     
+    # 再次验证
+    if cw <= 0 or ch <= 0 or x >= w or y >= h:
+        return image
+    
     # 裁剪手部区域
-    hand_region = image[y:y+ch, x:x+cw].copy()
+    try:
+        hand_region = image[y:y+ch, x:x+cw].copy()
+    except Exception:
+        return image
+    
+    # 验证裁剪结果
+    if hand_region is None or not isinstance(hand_region, np.ndarray):
+        return image
+    if hand_region.size == 0 or len(hand_region.shape) < 2:
+        return image
+    
+    # 验证mask_region
+    if mask is None or not isinstance(mask, np.ndarray):
+        return image
+    
     mask_region = mask[y:y+ch, x:x+cw]
     
+    # 验证mask_region有效性
+    if mask_region.size == 0:
+        return image
+    
     # 转换为灰度图
-    gray = cv2.cvtColor(hand_region, cv2.COLOR_BGR2GRAY)
+    try:
+        if len(hand_region.shape) == 3:
+            gray = cv2.cvtColor(hand_region, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = hand_region.copy()  # 已经是灰度图，复制一份
+    except Exception:
+        return image
+    
+    # 确保gray是有效的numpy数组
+    if not isinstance(gray, np.ndarray) or gray.size == 0 or len(gray.shape) < 2:
+        return image
     
     # 音色颜色映射
     instrument_colors = {
@@ -1132,21 +1339,32 @@ def create_ascii_art(image, contour, mask, synth=None, sampler=None):
             
             char_idx = max(0, min(len(chars_to_use) - 1, char_idx))
             
-            # 字符颜色：根据模式选择
+            # 字符颜色：根据模式选择（降低明度与饱和度）
             if sampler is not None and inst_colors is not None:
-                # 模式6：音色颜色渐变
+                # 模式6：音色颜色渐变（降低明度与饱和度）
                 brightness_factor = brightness_jitter / 255.0
                 base_color = inst_colors['base']
                 bright_color = inst_colors['bright']
-                blue_val = int(base_color[0] + (bright_color[0] - base_color[0]) * brightness_factor)
-                green_val = int(base_color[1] + (bright_color[1] - base_color[1]) * brightness_factor)
-                red_val = int(base_color[2] + (bright_color[2] - base_color[2]) * brightness_factor)
+                # 降低明度（乘以0.6）和饱和度（混合灰色）
+                blue_val = int((base_color[0] + (bright_color[0] - base_color[0]) * brightness_factor) * 0.5)
+                green_val = int((base_color[1] + (bright_color[1] - base_color[1]) * brightness_factor) * 0.5)
+                red_val = int((base_color[2] + (bright_color[2] - base_color[2]) * brightness_factor) * 0.5)
+                # 降低饱和度：混合灰色
+                gray_mix = int((blue_val + green_val + red_val) / 3)
+                blue_val = int(blue_val * 0.5 + gray_mix * 0.5)
+                green_val = int(green_val * 0.5 + gray_mix * 0.5)
+                red_val = int(red_val * 0.5 + gray_mix * 0.5)
                 gradient_color = (blue_val, green_val, red_val)
             else:
-                # 模式3/5：蓝色渐变
-                blue_val = int(80 + brightness_jitter * 0.68)
-                green_val = int(40 + brightness_jitter * 0.55)
-                red_val = int(10 + brightness_jitter * 0.35)
+                # 模式3/5：蓝色渐变（降低明度与饱和度）
+                blue_val = int((50 + brightness_jitter * 0.4) * 0.5)  # 降低明度
+                green_val = int((25 + brightness_jitter * 0.3) * 0.5)
+                red_val = int((5 + brightness_jitter * 0.2) * 0.5)
+                # 降低饱和度：混合灰色
+                gray_mix = int((blue_val + green_val + red_val) / 3)
+                blue_val = int(blue_val * 0.5 + gray_mix * 0.5)
+                green_val = int(green_val * 0.5 + gray_mix * 0.5)
+                red_val = int(red_val * 0.5 + gray_mix * 0.5)
                 gradient_color = (blue_val, green_val, red_val)
             
             # 获取字符
@@ -1525,7 +1743,9 @@ def main():
         
         # ASCII艺术模式
         if current_mode == MODE_ASCII and contour is not None:
-            display_image = create_ascii_art(display_image, contour, mask)
+            # 确保mask是有效的numpy数组
+            if mask is not None and isinstance(mask, np.ndarray) and mask.size > 0:
+                display_image = create_ascii_art(display_image, contour, mask)
         
         # 颜色调色板模式（8色）
         if current_mode == MODE_COLOR:
@@ -1560,7 +1780,8 @@ def main():
                 synth.update_from_gesture(hand_y, hand_area, hand_x, new_colors, finger_count)
                 
                 # 然后创建受合成器影响的ASCII艺术
-                display_image = create_ascii_art(display_image, contour, mask, synth, None)
+                if mask is not None and isinstance(mask, np.ndarray) and mask.size > 0:
+                    display_image = create_ascii_art(display_image, contour, mask, synth, None)
                 
                 # 显示参数
                 synth_params = (synth.frequency, synth.lfo_rate, synth.lfo_depth, synth.detune, synth.lfo_type, synth.color_hue, synth.color_sat, synth.envelope_target)
@@ -1598,7 +1819,8 @@ def main():
                 sampler.update_from_color(new_colors)
                 
                 # 创建ASCII艺术背景
-                display_image = create_ascii_art(display_image, contour, mask, None, sampler)
+                if mask is not None and isinstance(mask, np.ndarray) and mask.size > 0:
+                    display_image = create_ascii_art(display_image, contour, mask, None, sampler)
                 
                 # 显示参数
                 sampler_params = (sampler.base_note, sampler.tempo, sampler.current_scale, 

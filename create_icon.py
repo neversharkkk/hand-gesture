@@ -7,66 +7,89 @@ def create_prism_icon(size):
     
     scale = size / 256.0
     
-    prism_x1 = int(70 * scale)
-    prism_y1 = int(50 * scale)
-    prism_x2 = int(70 * scale)
-    prism_y2 = int(206 * scale)
-    prism_x3 = int(160 * scale)
-    prism_y3 = int(128 * scale)
+    cx, cy = size // 2, size // 2
     
-    prism_points = [(prism_x1, prism_y1), (prism_x2, prism_y2), (prism_x3, prism_y3)]
+    prism_h = int(180 * scale)
+    prism_w = int(80 * scale)
+    prism_x = int(60 * scale)
     
-    for i in range(int(8 * scale) + 1, 0, -1):
-        offset = i * 0.5
-        alpha = int(255 - i * 20)
-        outline_color = (100 + i * 5, 100 + i * 5, 120 + i * 5, alpha)
+    p1 = (prism_x, cy - prism_h // 2)
+    p2 = (prism_x, cy + prism_h // 2)
+    p3 = (prism_x + prism_w, cy)
+    
+    for i in range(int(6 * scale), 0, -1):
+        alpha = int(180 - i * 25)
+        glow_color = (80, 80, 120, alpha)
+        offset = i * int(1.5 * scale)
         expanded = [
-            (prism_x1 - offset, prism_y1 - offset),
-            (prism_x2 - offset, prism_y2 + offset),
-            (prism_x3 + offset, prism_y3)
+            (p1[0] - offset, p1[1] - offset // 2),
+            (p2[0] - offset, p2[1] + offset // 2),
+            (p3[0] + offset, p3[1])
         ]
-        draw.polygon(expanded, outline=outline_color)
+        draw.polygon(expanded, fill=None, outline=glow_color)
     
-    draw.polygon(prism_points, fill=(30, 30, 40, 255), outline=(60, 60, 80, 255))
+    draw.polygon([p1, p2, p3], fill=(25, 25, 35, 255), outline=(70, 70, 90, 255))
     
-    for i in range(int(15 * scale)):
-        x1 = int((10 + i * 1.5) * scale)
-        y_center = int(128 * scale)
-        y_offset = int((i - 7.5) * 2 * scale)
-        y1 = y_center + y_offset
-        
-        alpha = int(200 + 55 * (1 - abs(i - 7.5) / 7.5))
-        white_color = (255, 255, 255, alpha)
-        
-        draw.line([(x1, y1), (prism_x1, int(128 * scale))], fill=white_color, width=max(1, int(2 * scale)))
+    inner_offset = int(8 * scale)
+    inner_p1 = (p1[0] + inner_offset, p1[1] + inner_offset)
+    inner_p2 = (p2[0] + inner_offset, p2[1] - inner_offset)
+    inner_p3 = (p3[0] - inner_offset // 2, p3[1])
+    draw.polygon([inner_p1, inner_p2, inner_p3], fill=(35, 35, 50, 255))
     
-    rainbow = [
-        (255, 50, 50),
-        (255, 150, 50),
-        (255, 255, 50),
-        (50, 255, 50),
-        (50, 200, 255),
-        (50, 100, 255),
-        (150, 50, 255),
-        (200, 50, 200),
+    beam_start_x = int(15 * scale)
+    beam_end_x = p1[0]
+    beam_width = int(12 * scale)
+    
+    for i in range(beam_width, 0, -1):
+        alpha = int(255 * (1 - i / beam_width) * 0.8)
+        y_offset = int(i * 0.8)
+        draw.polygon([
+            (beam_start_x, cy - y_offset),
+            (beam_end_x, cy),
+            (beam_start_x, cy + y_offset)
+        ], fill=(255, 255, 255, alpha))
+    
+    draw.polygon([
+        (beam_start_x, cy - beam_width // 2),
+        (beam_end_x, cy),
+        (beam_start_x, cy + beam_width // 2)
+    ], fill=(255, 255, 255, 220))
+    
+    rainbow_colors = [
+        (255, 60, 60),
+        (255, 165, 50),
+        (255, 255, 60),
+        (60, 255, 60),
+        (60, 200, 255),
+        (80, 120, 255),
+        (160, 80, 255),
+        (220, 80, 200),
     ]
     
-    for idx, color in enumerate(rainbow):
-        angle = -35 + idx * 10
+    start_angle = -40
+    end_angle = 35
+    angle_step = (end_angle - start_angle) / len(rainbow_colors)
+    ray_length = int(110 * scale)
+    ray_width = max(2, int(5 * scale))
+    
+    for idx, color in enumerate(rainbow_colors):
+        angle = start_angle + idx * angle_step
         rad = math.radians(angle)
         
-        for thickness in range(int(5 * scale), 0, -1):
-            alpha = int(255 - thickness * 30)
-            line_color = color + (alpha,)
+        for thickness in range(ray_width, 0, -1):
+            alpha = int(255 - thickness * 40)
+            line_color = color + (max(100, alpha),)
             
-            x2 = prism_x3 + int((90 + thickness * 2) * scale * math.cos(rad))
-            y2 = prism_y3 + int((90 + thickness * 2) * scale * math.sin(rad))
+            length_factor = 1 + thickness * 0.02
+            x_end = p3[0] + int(ray_length * length_factor * math.cos(rad))
+            y_end = p3[1] + int(ray_length * length_factor * math.sin(rad))
             
-            draw.line([(prism_x3, prism_y3), (x2, y2)], fill=line_color, width=max(1, int(3 * scale)))
+            line_w = max(1, int(3 * scale))
+            draw.line([p3, (x_end, y_end)], fill=line_color, width=line_w)
     
     return img
 
-sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
 icons = []
 for w, h in sizes:
     icon = create_prism_icon(w)

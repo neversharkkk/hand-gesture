@@ -6,8 +6,8 @@
 
 ## 兼容性
 
-- **最低Android版本**：Android 7.0 (API 24)
-- **目标Android版本**：Android 14 (API 34)
+- **最低Android版本**：Android 5.0 (API 21)
+- **目标Android版本**：Android 13 (API 33)
 - **支持架构**：arm64-v8a（64位设备）
 
 ## 方法一：使用GitHub Actions自动打包（推荐）
