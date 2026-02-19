@@ -9,9 +9,6 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-env:
-  APP_VERSION: 1.4.0
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -49,59 +46,40 @@ jobs:
     - name: Prepare source files
       run: |
         cp main_test.py main.py
-        echo "=== main.py content ==="
-        cat main.py
-        echo "=== files ==="
         ls -la
     
-    - name: Cache Buildozer
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.buildozer
-          ~/.gradle
-        key: ${{ runner.os }}-buildozer-v9-${{ hashFiles('buildozer.spec') }}
-        restore-keys: |
-          ${{ runner.os }}-buildozer-v9-
-    
     - name: Build APK
+      id: build
       run: |
         buildozer android debug 2>&1 | tee build.log
+        BUILD_EXIT_CODE=${PIPESTATUS[0]}
+        echo "build_exit_code=$BUILD_EXIT_CODE" >> $GITHUB_OUTPUT
+        exit $BUILD_EXIT_CODE
     
-    - name: List all files
+    - name: Find APK files
       if: always()
       run: |
+        echo "=== Current directory ==="
+        pwd
         echo "=== Listing all files ==="
-        find . -type f -name "*.apk" 2>/dev/null || echo "No APK files found"
-        echo "=== Listing bin directory ==="
-        ls -la bin/ 2>/dev/null || echo "No bin directory"
-        echo "=== Listing build directories ==="
-        find .buildozer -name "*.apk" 2>/dev/null || echo "No APK in .buildozer"
+        ls -la
+        echo "=== Finding APK files ==="
+        find . -name "*.apk" -type f 2>/dev/null || echo "No APK found"
+        echo "=== bin directory ==="
+        ls -la bin/ 2>/dev/null || echo "No bin dir"
     
-    - name: Upload APK artifact
-      if: always()
+    - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: hand-gesture-apk-${{ env.APP_VERSION }}
-        path: |
-          bin/*.apk
-          .buildozer/android/platform/build*/dists/*/build/outputs/apk/debug/*.apk
+        name: hand-gesture-apk
+        path: bin/*.apk
         retention-days: 30
-        if-no-files-found: warn
     
     - name: Upload build log
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: build-log-${{ env.APP_VERSION }}
+        name: build-log
         path: build.log
         retention-days: 7
-    
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/v') && success()
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          bin/*.apk
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
