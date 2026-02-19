@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: 1.3.0
+  APP_VERSION: 2.0.0
 
 jobs:
   build:
@@ -21,59 +21,53 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Set up Python 3.10
+    - name: Set up Python 3.9
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
-        cache: 'pip'
+        python-version: '3.9'
     
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          git zip unzip openjdk-17-jdk \
+          git zip unzip openjdk-11-jdk \
           autoconf libtool pkg-config \
           zlib1g-dev libncurses5-dev \
-          libncursesw5-dev \
+          libncursesw5-dev libtinfo-dev \
           cmake libffi-dev libssl-dev \
           automake wget patchelf \
           libltdl-dev libgmp-dev \
           libmpfr-dev libmpc-dev \
           libisl-dev bison flex \
-          texinfo gettext \
-          xclip xsel libtinfo-dev
+          texinfo gettext autopoint
     
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip setuptools wheel
-        pip install buildozer==1.5.0 cython==0.29.36
+        pip install buildozer cython==0.29.33
     
     - name: Prepare source files
       run: |
-        cp main_test.py main.py
-        ls -la *.py
+        cp main_android_new.py main.py
+        ls -la
     
-    - name: Cache Buildozer global
+    - name: Cache Buildozer
       uses: actions/cache@v4
       with:
-        path: ~/.buildozer
-        key: ${{ runner.os }}-buildozer-global-v4-${{ hashFiles('buildozer.spec') }}
+        path: |
+          ~/.buildozer
+          ~/.gradle
+        key: ${{ runner.os }}-buildozer-v6-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-global-v4-
+          ${{ runner.os }}-buildozer-v6-
     
     - name: Build APK
       run: |
-        export ANDROID_HOME=/usr/local/lib/android/sdk
-        export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-        
         buildozer android debug 2>&1 | tee build.log
-        echo "build_status=success" >> $GITHUB_OUTPUT || true
     
     - name: Find APK files
       if: always()
       run: |
-        echo "Looking for APK files..."
         find . -name "*.apk" -type f 2>/dev/null || true
         ls -la bin/ 2>/dev/null || echo "No bin directory"
     
@@ -81,9 +75,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: hand-gesture-apk-${{ env.APP_VERSION }}
-        path: |
-          bin/*.apk
-          .buildozer/android/platform/build-*/dists/*/build/outputs/apk/debug/*.apk
+        path: bin/*.apk
         retention-days: 30
         if-no-files-found: warn
     
@@ -99,7 +91,6 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/v') && success()
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          bin/*.apk
+        files: bin/*.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,3 @@
+title=Hand Gesture Recognition
+author=Developer
+orientation=portrait
