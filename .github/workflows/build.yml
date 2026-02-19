@@ -45,7 +45,7 @@ jobs:
     
     - name: Prepare source files
       run: |
-        cp main_v2.1.py main.py
+        cp main_v2.2.py main.py
         ls -la
     
     - name: Build APK
@@ -63,7 +63,7 @@ jobs:
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: hand-gesture-apk-v2.1
+        name: hand-gesture-apk-v2.2
         path: bin/*.apk
         retention-days: 30
     
