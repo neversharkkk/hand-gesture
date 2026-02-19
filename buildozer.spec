@@ -7,7 +7,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
 source.exclude_exts = spec
 version = 1.6.0
-requirements = python3,kivy,numpy==1.24.4,opencv
+requirements = python3,kivy
 orientation = portrait
 fullscreen = 0
 android.permissions = CAMERA
