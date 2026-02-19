@@ -93,7 +93,7 @@ class HandGestureWidget(BoxLayout):
         Clock.schedule_once(self._request_permissions, 0.5)
         Clock.schedule_interval(self.update, 1.0 / 30.0)
         
-        Logger.info('HandGestureWidget: Initialized v2.6')
+        Logger.info('HandGestureWidget: Initialized v2.5')
     
     def _build_ui(self):
         header = BoxLayout(size_hint=(1, None), height=dp(48), spacing=dp(5))
@@ -130,15 +130,6 @@ class HandGestureWidget(BoxLayout):
         
         self.camera_container = BoxLayout(size_hint=(1, 0.55), padding=dp(2))
         self.add_widget(self.camera_container)
-        
-        self.finger_display_label = Label(
-            text='',
-            font_size=sp(16),
-            size_hint=(1, None),
-            height=dp(28),
-            color=(0.6, 0.8, 1.0, 1)
-        )
-        self.add_widget(self.finger_display_label)
         
         info_panel = BoxLayout(
             size_hint=(1, None),
@@ -268,11 +259,7 @@ class HandGestureWidget(BoxLayout):
         for m, btn in self.mode_buttons.items():
             btn.state = 'down' if m == mode else 'normal'
         
-        self.finger_display_label.text = ''
-        
-        if mode == MODE_CAMERA:
-            self._start_camera_mode()
-        elif mode == MODE_GESTURE:
+        if mode == MODE_GESTURE:
             self._start_gesture_visualization()
         elif mode == MODE_SYNTH:
             self._start_synth_visualization()
@@ -280,12 +267,6 @@ class HandGestureWidget(BoxLayout):
             self._start_drum_visualization()
         elif mode == MODE_ASCII:
             self._start_ascii_display()
-    
-    def _start_camera_mode(self):
-        if self.camera_active and self.camera:
-            self.camera_container.clear_widgets()
-            self.camera_container.canvas.clear()
-            self.camera_container.add_widget(self.camera)
     
     def _start_gesture_visualization(self):
         try:
@@ -339,9 +320,7 @@ class HandGestureWidget(BoxLayout):
             self.camera = Camera(
                 index=self.camera_index,
                 resolution=(640, 480),
-                play=True,
-                size_hint=(1, 1),
-                pos_hint={'center_x': 0.5, 'center_y': 0.5}
+                play=True
             )
             self.camera_container.add_widget(self.camera)
             self.camera_active = True
@@ -381,7 +360,6 @@ class HandGestureWidget(BoxLayout):
         self.gesture_label.text = 'Gesture: --'
         self.confidence_label.text = 'Confidence: 0%'
         self.params_label.text = ''
-        self.finger_display_label.text = ''
         self.gesture_recognizer = SimpleGestureRecognizer()
         
         for m, btn in self.mode_buttons.items():
@@ -423,7 +401,6 @@ class HandGestureWidget(BoxLayout):
                 self.confidence_label.text = f'Confidence: {int(confidence*100)}%'
                 self.finger_count = fingers
                 self.hand_center = (0.5, 0.5)
-                self.finger_display_label.text = f'Fingers: {fingers}'
                 
                 self._draw_hand_contour()
         
@@ -443,6 +420,20 @@ class HandGestureWidget(BoxLayout):
             ascii_chars = " .'`^\",:;Il!i~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
             char_idx = int(brightness / 255 * (len(ascii_chars) - 1))
             char = ascii_chars[max(0, min(len(ascii_chars) - 1, char_idx))]
+            ascii_display = f'''
+╔═══════════════════════════╗
+║       ASCII MODE           ║
+╠═══════════════════════════╣
+║  Brightness: {brightness:>3}        ║
+║  Character:  {char:^11}       ║
+╠═══════════════════════════╣
+║      {char * 10}           ║
+║     {char * 12}          ║
+║    {char * 14}         ║
+║     {char * 12}          ║
+║      {char * 10}           ║
+╚═══════════════════════════╝
+'''
             self.params_label.text = 'ASCII Art Active'
     
     def _draw_hand_contour(self):
@@ -476,13 +467,17 @@ class HandGestureWidget(BoxLayout):
                 
                 Color(1.0, 0.3, 0.3, 1)
                 Ellipse(size=(radius*0.15, radius*0.15), pos=(cx - radius*0.075, cy - radius*0.075))
+                
+                Color(0.6, 0.8, 1.0, 1)
+                Label(text=f'{self.finger_count} fingers', 
+                      font_size=sp(14), size=(100, 30), pos=(cx - 50, cy + radius + 10), halign='center')
         except Exception as e:
             Logger.error(f'Draw error: {e}')
 
 
 class HandGestureApp(App):
     def build(self):
-        Logger.info('HandGestureApp: Building v2.6...')
+        Logger.info('HandGestureApp: Building v2.5...')
         return HandGestureWidget()
     
     def on_stop(self):
