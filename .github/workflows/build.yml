@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  APP_VERSION: 2.0.0
+  APP_VERSION: 1.4.0
 
 jobs:
   build:
@@ -48,7 +48,7 @@ jobs:
     
     - name: Prepare source files
       run: |
-        cp main_android_new.py main.py
+        cp main_v1.4.py main.py
         ls -la
     
     - name: Cache Buildozer
@@ -57,9 +57,9 @@ jobs:
         path: |
           ~/.buildozer
           ~/.gradle
-        key: ${{ runner.os }}-buildozer-v6-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-v7-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-v6-
+          ${{ runner.os }}-buildozer-v7-
     
     - name: Build APK
       run: |
