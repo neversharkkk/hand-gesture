@@ -48,7 +48,10 @@ jobs:
     
     - name: Prepare source files
       run: |
-        cp main_v1.4.py main.py
+        cp main_test.py main.py
+        echo "=== main.py content ==="
+        cat main.py
+        echo "=== files ==="
         ls -la
     
     - name: Cache Buildozer
@@ -57,33 +60,40 @@ jobs:
         path: |
           ~/.buildozer
           ~/.gradle
-        key: ${{ runner.os }}-buildozer-v7-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-buildozer-v9-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-v7-
+          ${{ runner.os }}-buildozer-v9-
     
     - name: Build APK
       run: |
         buildozer android debug 2>&1 | tee build.log
     
-    - name: Find APK files
+    - name: List all files
       if: always()
       run: |
-        find . -name "*.apk" -type f 2>/dev/null || true
+        echo "=== Listing all files ==="
+        find . -type f -name "*.apk" 2>/dev/null || echo "No APK files found"
+        echo "=== Listing bin directory ==="
         ls -la bin/ 2>/dev/null || echo "No bin directory"
+        echo "=== Listing build directories ==="
+        find .buildozer -name "*.apk" 2>/dev/null || echo "No APK in .buildozer"
     
     - name: Upload APK artifact
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: hand-gesture-apk-${{ env.APP_VERSION }}
-        path: bin/*.apk
+        path: |
+          bin/*.apk
+          .buildozer/android/platform/build*/dists/*/build/outputs/apk/debug/*.apk
         retention-days: 30
         if-no-files-found: warn
     
-    - name: Upload build log on failure
-      if: failure()
+    - name: Upload build log
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: build-log
+        name: build-log-${{ env.APP_VERSION }}
         path: build.log
         retention-days: 7
     
@@ -91,6 +101,7 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/v') && success()
       uses: softprops/action-gh-release@v1
       with:
-        files: bin/*.apk
+        files: |
+          bin/*.apk
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
