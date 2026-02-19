@@ -448,7 +448,7 @@ class HandGestureWidget(BoxLayout):
             self.camera_container.clear_widgets()
             self.camera = Camera(
                 index=self.camera_index,
-                resolution=(480, 640),
+                resolution=(640, 480),
                 play=True
             )
             self.camera_container.add_widget(self.camera)
@@ -457,6 +457,22 @@ class HandGestureWidget(BoxLayout):
             Logger.info(f'HandGestureWidget: Camera {self.camera_index} started')
         except Exception as e:
             Logger.error(f'HandGestureWidget: Camera error - {e}')
+            self.status_label.text = 'Status: Camera error - trying fallback'
+            self._start_camera_fallback()
+    
+    def _start_camera_fallback(self):
+        try:
+            self.camera_container.clear_widgets()
+            self.camera = Camera(
+                index=self.camera_index,
+                play=True
+            )
+            self.camera_container.add_widget(self.camera)
+            self.camera_active = True
+            self.status_label.text = f'Status: Camera {self.camera_index} active (fallback)'
+            Logger.info(f'HandGestureWidget: Camera fallback started')
+        except Exception as e:
+            Logger.error(f'HandGestureWidget: Fallback camera error - {e}')
             self.status_label.text = 'Status: Camera error'
     
     def stop_camera(self):
