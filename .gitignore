@@ -1,6 +1,8 @@
 # Buildozer
 .buildozer/
 bin/
+build.log
+*.apk
 
 # Python
 __pycache__/

@@ -5,6 +5,7 @@ from collections import deque
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.image import Image
+from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.scrollview import ScrollView
@@ -13,6 +14,7 @@ from kivy.clock import Clock
 from kivy.graphics.texture import Texture
 from kivy.logger import Logger
 from kivy.properties import StringProperty
+from kivy.metrics import dp, sp
 
 MODE_CAMERA = 0
 MODE_GESTURE = 1
@@ -32,6 +34,14 @@ instrument_colors = {
 }
 
 
+def _is_android():
+    try:
+        import android  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 class AndroidCamera:
     def __init__(self):
         self.cap = None
@@ -43,7 +53,14 @@ class AndroidCamera:
     def start(self):
         try:
             import cv2
-            self.cap = cv2.VideoCapture(0)
+            # Android 使用 CAP_ANDROID 提高兼容性
+            if _is_android():
+                try:
+                    self.cap = cv2.VideoCapture(0, cv2.CAP_ANDROID)
+                except (TypeError, Exception):
+                    self.cap = cv2.VideoCapture(0)
+            else:
+                self.cap = cv2.VideoCapture(0)
             if self.cap.isOpened():
                 self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -52,6 +69,21 @@ class AndroidCamera:
                 self.thread.start()
                 Logger.info("Camera started")
                 return True
+            # Android 备选：尝试其他相机索引
+            if _is_android():
+                for idx in [1, 2, 3]:
+                    try:
+                        self.cap = cv2.VideoCapture(idx, cv2.CAP_ANDROID)
+                    except (TypeError, Exception):
+                        self.cap = cv2.VideoCapture(idx)
+                    if self.cap and self.cap.isOpened():
+                        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                        self.running = True
+                        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+                        self.thread.start()
+                        Logger.info(f"Camera {idx} started")
+                        return True
         except Exception as e:
             Logger.error(f"Camera init error: {e}")
         return False
@@ -564,6 +596,8 @@ class HandGestureApp(App):
     fps_text = StringProperty('FPS: 0')
     mode_text = StringProperty('Camera')
     info_text = StringProperty('')
+    gesture_text = StringProperty('--')
+    fingers_text = StringProperty('0')
     
     def build(self):
         self.current_mode = MODE_CAMERA
@@ -576,35 +610,83 @@ class HandGestureApp(App):
         self.frame_count = 0
         self.hand_position_history = deque(maxlen=3)
         
-        layout = BoxLayout(orientation='vertical')
+        root = BoxLayout(orientation='vertical', padding=dp(8), spacing=dp(6))
         
-        self.display = Image(allow_stretch=True, keep_ratio=True)
-        layout.add_widget(self.display, size_hint=(1, 0.85))
+        # 顶部：标题 + FPS
+        header = BoxLayout(size_hint=(1, None), height=dp(44), spacing=dp(8))
+        title = Label(text='[b]Hand Gesture[/b]', markup=True, font_size=sp(20),
+                      halign='left', size_hint_x=0.7)
+        title.bind(size=title.setter('text_size'))
+        self.fps_label = Label(text='FPS: 0', font_size=sp(14), color=(0.5, 0.9, 0.5, 1),
+                               halign='right', size_hint_x=0.3)
+        self.fps_label.bind(size=self.fps_label.setter('text_size'))
+        header.add_widget(title)
+        header.add_widget(self.fps_label)
+        root.add_widget(header)
         
-        btn_layout = GridLayout(cols=6, size_hint=(1, 0.15), spacing=2, padding=2)
+        # 信息栏：手势、手指、模式参数
+        info_bar = BoxLayout(size_hint=(1, None), height=dp(52), spacing=dp(8))
+        info_left = BoxLayout(orientation='vertical', spacing=dp(2), size_hint_x=0.6)
+        self.gesture_label = Label(text='Gesture: --', font_size=sp(15), bold=True,
+                                   color=(0.3, 0.9, 1.0, 1), halign='left')
+        self.gesture_label.bind(size=self.gesture_label.setter('text_size'))
+        self.fingers_label = Label(text='Fingers: 0', font_size=sp(13),
+                                   color=(0.8, 0.8, 0.8, 1), halign='left')
+        self.fingers_label.bind(size=self.fingers_label.setter('text_size'))
+        info_left.add_widget(self.gesture_label)
+        info_left.add_widget(self.fingers_label)
+        info_right = BoxLayout(orientation='vertical', spacing=dp(2), size_hint_x=0.4)
+        self.mode_label = Label(text='Camera', font_size=sp(14),
+                                color=(1.0, 0.85, 0.4, 1), halign='right')
+        self.mode_label.bind(size=self.mode_label.setter('text_size'))
+        self.params_label = Label(text='', font_size=sp(11),
+                                  color=(0.6, 0.9, 0.6, 1), halign='right')
+        self.params_label.bind(size=self.params_label.setter('text_size'))
+        info_right.add_widget(self.mode_label)
+        info_right.add_widget(self.params_label)
+        info_bar.add_widget(info_left)
+        info_bar.add_widget(info_right)
+        root.add_widget(info_bar)
         
-        modes = [('Camera', MODE_CAMERA), ('Gesture', MODE_GESTURE), ('ASCII', MODE_ASCII),
-                 ('Synth', MODE_SYNTH), ('TR-808', MODE_SAMPLER)]
+        # 摄像头显示区
+        self.display = Image(allow_stretch=True, keep_ratio=True, size_hint=(1, 0.6))
+        root.add_widget(self.display)
         
+        # 模式切换按钮
+        mode_names = ['Camera', 'Gesture', 'ASCII', 'Synth', 'TR-808']
+        btn_row = GridLayout(cols=5, size_hint=(1, None), height=dp(52), spacing=dp(4))
         self.buttons = {}
-        for name, mode in modes:
-            btn = ToggleButton(text=name, group='mode')
+        for name, mode in zip(mode_names, [MODE_CAMERA, MODE_GESTURE, MODE_ASCII, MODE_SYNTH, MODE_SAMPLER]):
+            btn = ToggleButton(text=name, font_size=sp(12), group='mode',
+                               size_hint=(None, 1), width=dp(70),
+                               background_color=(0.25, 0.5, 0.7, 1) if mode != MODE_CAMERA else (0.2, 0.6, 0.4, 1),
+                               background_normal='', background_down='')
             if mode == MODE_CAMERA:
                 btn.state = 'down'
             btn.bind(on_press=lambda x, m=mode: self.set_mode(m))
-            btn_layout.add_widget(btn)
+            btn_row.add_widget(btn)
             self.buttons[mode] = btn
+        root.add_widget(btn_row)
         
-        btn_reset = Button(text='Reset')
+        # 底部：Reset
+        btn_reset = Button(text='Reset', font_size=sp(14), size_hint=(1, None), height=dp(48),
+                          background_color=(0.7, 0.35, 0.3, 1), background_normal='', background_down='')
         btn_reset.bind(on_press=self.reset)
-        btn_layout.add_widget(btn_reset)
+        root.add_widget(btn_reset)
         
-        layout.add_widget(btn_layout)
-        
+        Clock.schedule_once(self._request_permissions, 0.3)
         Clock.schedule_once(self._init_camera, 0.5)
         Clock.schedule_interval(self.update_loop, 1.0 / 30.0)
         
-        return layout
+        return root
+    
+    def _request_permissions(self, dt):
+        try:
+            from android.permissions import request_permissions, Permission
+            request_permissions([Permission.CAMERA, Permission.RECORD_AUDIO])
+            Logger.info('Permissions requested')
+        except ImportError:
+            pass
     
     def _init_camera(self, dt):
         self.camera.start()
@@ -659,6 +741,7 @@ class HandGestureApp(App):
             self.prev_time = curr_time
             
             frame = self.camera.get_frame()
+            gesture, finger_count = '--', 0
             if frame is None:
                 display = np.zeros((480, 640, 3), dtype=np.uint8)
                 cv2.putText(display, 'Camera Initializing...', (100, 240),
@@ -710,6 +793,18 @@ class HandGestureApp(App):
                 
                 self._draw_ui(display, gesture, finger_count, area)
             
+            # 同步更新 Kivy 信息栏
+            self.gesture_label.text = f'Gesture: {gesture}'
+            self.fingers_label.text = f'Fingers: {finger_count}'
+            mode_names = ['Camera', 'Gesture', 'ASCII', 'Synth', 'TR-808']
+            self.mode_label.text = mode_names[self.current_mode]
+            if self.current_mode == MODE_SYNTH and self.synth:
+                self.params_label.text = f'{int(self.synth.frequency)}Hz'
+            elif self.current_mode == MODE_SAMPLER and self.sampler:
+                self.params_label.text = f'{self.sampler.current_pattern} {int(self.sampler.tempo)} BPM'
+            else:
+                self.params_label.text = ''
+            
             buf = cv2.flip(display, 0).tobytes()
             texture = Texture.create(size=(display.shape[1], display.shape[0]), colorfmt='bgr')
             texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
@@ -718,6 +813,7 @@ class HandGestureApp(App):
             self.frame_count += 1
             if self.frame_count % 5 == 0:
                 self.fps_text = f'FPS: {int(self.fps)}'
+                self.fps_label.text = self.fps_text
             
         except Exception as e:
             Logger.error(f"Update error: {e}")
