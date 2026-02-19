@@ -22,9 +22,9 @@ Cloning into 'python-for-android'...
 [0m[1;30m# Search for Java keytool (keytool)[0m
 [0m[1;30m#  -> found at /usr/lib/jvm/temurin-17-jdk-amd64/bin/keytool[0m
 [0m[1;34m# Install platform[0m
-[0m[1;30m# Run ['git', 'clone', '-b', 'stable', '--single-branch', 'https://github.com/kivy/python-for-android.git', 'python-for-android'][0m
+[0m[1;30m# Run ['git', 'clone', '-b', 'develop', '--single-branch', 'https://github.com/kivy/python-for-android.git', 'python-for-android'][0m
 [0m[1;30m# Cwd /home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform[0m
-[0m[1;30m# Run ['/opt/hostedtoolcache/Python/3.9.25/x64/bin/python', '-m', 'pip', 'install', '-q', '--user', 'appdirs', 'colorama>=0.3.3', 'jinja2', 'six'][0m
+[0m[1;30m# Run ['/opt/hostedtoolcache/Python/3.9.25/x64/bin/python', '-m', 'pip', 'install', '-q', '--user', 'appdirs', 'colorama>=0.3.3', 'jinja2', 'sh>=2, <3.0; sys_platform!="win32"', 'meson', 'ninja', 'build', 'toml', 'packaging', 'setuptools', 'wheel~=0.43.0'][0m
 [0m[1;30m# Cwd None[0m
 [0m[1;34m# Android ANT is missing, downloading[0m
 [0m[1;30m# Downloading https://archive.apache.org/dist/ant/binaries/apache-ant-1.9.4-bin.tar.gz[0m
@@ -37,12 +37,8 @@ Cloning into 'python-for-android'...
 [0m[1;30m# Run ['unzip', '-q', '/home/runner/.buildozer/android/platform/android-sdk/commandlinetools-linux-6514223_latest.zip'][0m
 [0m[1;30m# Cwd /home/runner/.buildozer/android/platform/android-sdk[0m
 [0m[1;34m# Android SDK tools base installation done.[0m
-[0m[1;31m# WARNING: Unable to find recommended Android NDK for current installation of python-for-android, defaulting to the default version r17c[0m
-[0m[1;31m# WARNING: Unable to find recommended Android NDK for current installation of python-for-android, defaulting to the default version r17c[0m
+[0m[1;34m# Recommended android's NDK version by p4a is: 28c[0m
 [0m[1;34m# Android NDK is missing, downloading[0m
-[0m[1;31m# WARNING: Unable to find recommended Android NDK for current installation of python-for-android, defaulting to the default version r17c[0m
-[0m[1;31m# WARNING: Unable to find recommended Android NDK for current installation of python-for-android, defaulting to the default version r17c[0m
-[0m[1;31m# WARNING: Unable to find recommended Android NDK for current installation of python-for-android, defaulting to the default version r17c[0m
 [0m[1;30m# Downloading https://dl.google.com/android/repository/android-ndk-r23b-linux.zip[0m
 [0m[1;34m# Unpacking Android NDK[0m
 [0m[1;30m# Run ['unzip', '-q', '/home/runner/.buildozer/android/platform/android-ndk-r23b-linux.zip'][0m
@@ -197,8 +193,6 @@ y
 Loading package information...                                                  Loading local repository...                                                     [                                       ] 3% Loading local repository...        [                                       ] 3% Fetch remote repository...         [=                                      ] 3% Fetch remote repository...         [=                                      ] 4% Fetch remote repository...         [=                                      ] 5% Fetch remote repository...         [==                                     ] 5% Fetch remote repository...         [==                                     ] 6% Fetch remote repository...         [==                                     ] 7% Fetch remote repository...         [===                                    ] 8% Fetch remote repository...         [===                                    ] 8% Computing updates...               [===                                    ] 10% Computing updates...              [=======================================] 100% Computing updates...             
 [0m[1;30m# Rename /home/runner/.buildozer/android/platform/android-ndk-r23b to /home/runner/.buildozer/android/platform/android-ndk-r23b[0m
 [0m[1;34m# Android NDK installation done.[0m
-[0m[1;31m# WARNING: Unable to find recommended Android NDK for current installation of python-for-android, defaulting to the default version r17c[0m
-[0m[1;31m# WARNING: Unable to find recommended Android NDK for current installation of python-for-android, defaulting to the default version r17c[0m
 [0m[1;34m# Installing/updating SDK platform tools if necessary[0m
 [0m[1;30m# Run (expect) ['/home/runner/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager', '--sdk_root=/home/runner/.buildozer/android/platform/android-sdk', 'platform-tools'][0m
 [0m[1;30m# Cwd /home/runner/.buildozer/android/platform/android-sdk[0m
@@ -855,17 +849,276 @@ y
 [0m[1;30m# Run ['/home/runner/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager', '--sdk_root=/home/runner/.buildozer/android/platform/android-sdk', 'platforms;android-31'][0m
 [0m[1;30m# Cwd /home/runner/.buildozer/android/platform/android-sdk[0m
 Loading package information...                                                  Loading local repository...                                                     [                                       ] 3% Loading local repository...        [                                       ] 3% Fetch remote repository...         [=                                      ] 3% Fetch remote repository...         [=                                      ] 4% Fetch remote repository...         [=                                      ] 5% Fetch remote repository...         [==                                     ] 5% Fetch remote repository...         [==                                     ] 6% Fetch remote repository...         [==                                     ] 7% Fetch remote repository...         [===                                    ] 8% Fetch remote repository...         [===                                    ] 8% Computing updates...               [===                                    ] 10% Computing updates...              [===                                    ] 10% Installing Android SDK Platform 31[===                                    ] 10% Downloading platform-31_r01.zip...[====                                   ] 10% Downloading platform-31_r01.zip...[====                                   ] 11% Downloading platform-31_r01.zip...[====                                   ] 12% Downloading platform-31_r01.zip...[=====                                  ] 13% Downloading platform-31_r01.zip...[=====                                  ] 14% Downloading platform-31_r01.zip...[=====                                  ] 15% Downloading platform-31_r01.zip...[======                                 ] 15% Downloading platform-31_r01.zip...[======                                 ] 16% Downloading platform-31_r01.zip...[======                                 ] 17% Downloading platform-31_r01.zip...[=======                                ] 18% Downloading platform-31_r01.zip...[=======                                ] 19% Downloading platform-31_r01.zip...[=======                                ] 20% Downloading platform-31_r01.zip...[========                               ] 20% Downloading platform-31_r01.zip...[========                               ] 21% Downloading platform-31_r01.zip...[========                               ] 22% Downloading platform-31_r01.zip...[=========                              ] 23% Downloading platform-31_r01.zip...[=========                              ] 24% Downloading platform-31_r01.zip...[=========                              ] 25% Downloading platform-31_r01.zip...[==========                             ] 25% Downloading platform-31_r01.zip...[==========                             ] 26% Downloading platform-31_r01.zip...[==========                             ] 27% Downloading platform-31_r01.zip...[===========                            ] 28% Downloading platform-31_r01.zip...[===========                            ] 29% Downloading platform-31_r01.zip...[===========                            ] 30% Downloading platform-31_r01.zip...[============                           ] 30% Downloading platform-31_r01.zip...[============                           ] 31% Downloading platform-31_r01.zip...[============                           ] 32% Downloading platform-31_r01.zip...[============                           ] 33% Downloading platform-31_r01.zip...[============                           ] 33% Unzipping...                      [============                           ] 33% Unzipping... android-12/          [============                           ] 33% Unzipping... android-12/android.ja[=============                          ] 33% Unzipping... android-12/android.ja[=============                          ] 34% Unzipping... android-12/android.ja[=============                          ] 35% Unzipping... android-12/android.ja[==============                         ] 35% Unzipping... android-12/android.ja[==============                         ] 36% Unzipping... android-12/android.ja[==============                         ] 37% Unzipping... android-12/android.ja[===============                        ] 38% Unzipping... android-12/android.ja[===============                        ] 39% Unzipping... android-12/android.ja[===============                        ] 40% Unzipping... android-12/android.ja[================                       ] 40% Unzipping... android-12/android.ja[================                       ] 40% Unzipping... android-12/optional/ [================                       ] 40% Unzipping... android-12/optional/a[================                       ] 40% Unzipping... android-12/optional/l[================                       ] 40% Unzipping... android-12/optional/o[================                       ] 41% Unzipping... android-12/optional/o[================                       ] 41% Unzipping... android-12/optional/a[================                       ] 41% Unzipping... android-12/optional/o[================                       ] 41% Unzipping... android-12/templates/[================                       ] 41% Unzipping... android-12/core-for-s[================                       ] 41% Unzipping... android-12/build.prop[================                       ] 41% Unzipping... android-12/android-st[================                       ] 42% Unzipping... android-12/android-st[=================                      ] 43% Unzipping... android-12/android-st[=================                      ] 44% Unzipping... android-12/android-st[=================                      ] 44% Unzipping... android-12/uiautomato[=================                      ] 44% Unzipping... android-12/source.pro[=================                      ] 44% Unzipping... android-12/data/     [=================                      ] 44% Unzipping... android-12/data/servi[=================                      ] 44% Unzipping... android-12/data/NOTIC[=================                      ] 44% Unzipping... android-12/data/widge[=================                      ] 44% Unzipping... android-12/data/broad[=================                      ] 44% Unzipping... android-12/data/api-v[=================                      ] 44% Unzipping... android-12/data/featu[=================                      ] 44% Unzipping... android-12/data/annot[=================                      ] 44% Unzipping... android-12/data/res/ [=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 44% Unzipping... android-12/data/res/l[=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 44% Unzipping... android-12/data/res/m[=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 44% Unzipping... android-12/data/res/a[=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 44% Unzipping... android-12/data/res/d[=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 44% Unzipping... android-12/data/res/x[=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 44% Unzipping... android-12/data/res/l[=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 44% Unzipping... android-12/data/res/l[=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 44% Unzipping... android-12/data/res/r[=================                      ] 44% Unzipping... android-12/data/res/v[=================                      ] 45% Unzipping... android-12/data/res/v[=================                      ] 45% Unzipping... android-12/data/res/x[=================                      ] 45% Unzipping... android-12/data/res/v[=================                      ] 45% Unzipping... android-12/data/res/r[=================                      ] 45% Unzipping... android-12/data/res/v[=================                      ] 45% Unzipping... android-12/data/res/a[=================                      ] 45% Unzipping... android-12/data/res/v[=================                      ] 45% Unzipping... android-12/data/res/r[=================                      ] 45% Unzipping... android-12/data/res/v[=================                      ] 45% Unzipping... android-12/data/res/c[=================                      ] 45% Unzipping... android-12/data/res/v[=================                      ] 45% Unzipping... android-12/data/res/d[==================                     ] 45% Unzipping... android-12/data/res/d[==================                     ] 46% Unzipping... android-12/data/res/d[==================                     ] 46% Unzipping... android-12/data/res/v[==================                     ] 46% Unzipping... android-12/data/res/t[==================                     ] 46% Unzipping... android-12/data/res/v[==================                     ] 46% Unzipping... android-12/data/res/x[==================                     ] 46% Unzipping... android-12/data/res/v[==================                     ] 46% Unzipping... android-12/data/res/r[==================                     ] 46% Unzipping... android-12/data/res/v[==================                     ] 46% Unzipping... android-12/data/res/r[==================                     ] 46% Unzipping... android-12/data/res/v[==================                     ] 46% Unzipping... android-12/data/res/l[==================                     ] 46% Unzipping... android-12/data/res/v[==================                     ] 46% Unzipping... android-12/data/res/r[==================                     ] 46% Unzipping... android-12/data/res/v[==================                     ] 46% Unzipping... android-12/data/res/d[==================                     ] 47% Unzipping... android-12/data/res/d[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/d[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/r[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/r[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/m[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/r[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/c[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/r[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/r[==================                     ] 47% Unzipping... android-12/data/res/x[==================                     ] 47% Unzipping... android-12/data/res/v[==================                     ] 47% Unzipping... android-12/data/res/d[===================                    ] 48% Unzipping... android-12/data/res/d[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/r[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/m[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/r[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/r[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/i[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/d[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/m[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/d[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/d[===================                    ] 48% Unzipping... android-12/data/res/v[===================                    ] 48% Unzipping... android-12/data/res/d[===================                    ] 49% Unzipping... android-12/data/res/d[===================                    ] 49% Unzipping... android-12/data/res/v[===================                    ] 49% Unzipping... android-12/data/res/d[===================                    ] 49% Unzipping... android-12/data/res/v[===================                    ] 49% Unzipping... android-12/data/res/d[===================                    ] 49% Unzipping... android-12/data/res/v[===================                    ] 49% Unzipping... android-12/data/res/d[===================                    ] 49% Unzipping... android-12/data/res/v[===================                    ] 49% Unzipping... android-12/data/res/x[===================                    ] 49% Unzipping... android-12/data/res/v[===================                    ] 49% Unzipping... android-12/data/res/d[===================                    ] 49% Unzipping... android-12/data/res/v[===================                    ] 49% Unzipping... android-12/data/res/d[===================                    ] 50% Unzipping... android-12/data/res/d[====================                   ] 50% Unzipping... android-12/data/res/d[====================                   ] 50% Unzipping... android-12/data/res/v[====================                   ] 50% Unzipping... android-12/data/res/a[====================                   ] 50% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/r[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/m[====================                   ] 51% Unzipping... android-12/data/res/x[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/a[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/i[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/r[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/r[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/r[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/l[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/l[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/d[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/l[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/m[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/r[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/d[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/l[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/l[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/d[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/l[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/c[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/r[====================                   ] 51% Unzipping... android-12/data/res/v[====================                   ] 51% Unzipping... android-12/data/res/d[====================                   ] 52% Unzipping... android-12/data/res/d[====================                   ] 52% Unzipping... android-12/data/res/v[====================                   ] 52% Unzipping... android-12/data/res/m[====================                   ] 52% Unzipping... android-12/data/res/v[====================                   ] 52% Unzipping... android-12/data/res/d[====================                   ] 52% Unzipping... android-12/data/res/v[====================                   ] 52% Unzipping... android-12/data/res/m[====================                   ] 52% Unzipping... android-12/data/res/v[====================                   ] 52% Unzipping... android-12/data/res/r[====================                   ] 52% Unzipping... android-12/data/res/l[====================                   ] 52% Unzipping... android-12/data/res/v[====================                   ] 52% Unzipping... android-12/data/res/r[====================                   ] 52% Unzipping... android-12/data/res/v[====================                   ] 52% Unzipping... android-12/data/res/d[=====================                  ] 53% Unzipping... android-12/data/res/d[=====================                  ] 53% Unzipping... android-12/data/res/v[=====================                  ] 53% Unzipping... android-12/data/res/r[=====================                  ] 53% Unzipping... android-12/data/res/v[=====================                  ] 53% Unzipping... android-12/data/res/d[=====================                  ] 53% Unzipping... android-12/data/res/v[=====================                  ] 53% Unzipping... android-12/data/res/d[=====================                  ] 53% Unzipping... android-12/data/res/v[=====================                  ] 53% Unzipping... android-12/data/categ[=====================                  ] 53% Unzipping... android-12/data/activ[=====================                  ] 53% Unzipping... android-12/sdk.proper[=====================                  ] 53% Unzipping... android-12/skins/    [=====================                  ] 53% Unzipping... android-12/skins/WXGA[=====================                  ] 53% Unzipping... android-12/skins/WQVG[=====================                  ] 53% Unzipping... android-12/skins/NOTI[=====================                  ] 53% Unzipping... android-12/skins/HVGA[=====================                  ] 54% Unzipping... android-12/skins/HVGA[=====================                  ] 54% Unzipping... android-12/skins/WVGA[=====================                  ] 54% Unzipping... android-12/skins/WQVG[=====================                  ] 54% Unzipping... android-12/skins/WVGA[=====================                  ] 54% Unzipping... android-12/skins/QVGA[=====================                  ] 54% Unzipping... android-12/skins/WXGA[=====================                  ] 54% Unzipping... android-12/skins/WSVG[=====================                  ] 54% Unzipping... android-12/skins/WXGA[=====================                  ] 54% Unzipping... android-12/framework.[=====================                  ] 55% Unzipping... android-12/framework.[=======================================] 100% Unzipping... android-12/framework
-/home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/python-for-android/pythonforandroid/toolchain.py:53: DeprecationWarning: distutils Version classes are deprecated. Use packaging.version instead.
-  if LooseVersion(cur_ver) < LooseVersion(version):
+[WARNING]: prerequisites.py is experimental and does not support all prerequisites yet.
+[WARNING]: Please report any issues to the python-for-android issue tracker.
 [0m[1;34m# Android packages installation done.[0m
 [0m[1;30m# Run ['/opt/hostedtoolcache/Python/3.9.25/x64/bin/python', '-m', 'pythonforandroid.toolchain', 'aab', '-h', '--color=always', '--storage-dir=/home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a', '--ndk-api=21', '--ignore-setup-py', '--debug'][0m
 [0m[1;30m# Cwd /home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/python-for-android[0m
-/home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/python-for-android/pythonforandroid/toolchain.py:73: DeprecationWarning: the imp module is deprecated in favour of importlib; see the module's documentation for alternative uses
-  import imp
-usage: toolchain.py [-h] [-v]
-                    {recipes,bootstraps,clean_all,clean-all,clean_dists,clean-dists,clean_bootstrap_builds,clean-bootstrap-builds,clean_builds,clean-builds,clean,clean_recipe_build,clean-recipe-build,clean_download_cache,clean-download-cache,export_dist,export-dist,apk,create,archs,distributions,dists,delete_dist,delete-dist,sdk_tools,sdk-tools,adb,logcat,build_status,build-status}
-                    ...
-toolchain.py: error: argument subparser_name: invalid choice: 'aab' (choose from 'recipes', 'bootstraps', 'clean_all', 'clean-all', 'clean_dists', 'clean-dists', 'clean_bootstrap_builds', 'clean-bootstrap-builds', 'clean_builds', 'clean-builds', 'clean', 'clean_recipe_build', 'clean-recipe-build', 'clean_download_cache', 'clean-download-cache', 'export_dist', 'export-dist', 'apk', 'create', 'archs', 'distributions', 'dists', 'delete_dist', 'delete-dist', 'sdk_tools', 'sdk-tools', 'adb', 'logcat', 'build_status', 'build-status')
-[0m[1;31m# This buildozer version requires a python-for-android version with AAB (Android App Bundle) support. Please update your pinned version accordingly.[0m
-[0m[1;34m# Check configuration tokens[0m
+[WARNING]: prerequisites.py is experimental and does not support all prerequisites yet.
+[WARNING]: Please report any issues to the python-for-android issue tracker.
+usage: toolchain.py aab [-h] [--debug] [--color {always,never,auto}]
+                        [--sdk-dir SDK_DIR] [--ndk-dir NDK_DIR]
+                        [--android-api ANDROID_API]
+                        [--ndk-version NDK_VERSION] [--ndk-api NDK_API]
+                        [--symlink-bootstrap-files]
+                        [--storage-dir STORAGE_DIR] [--arch ARCH]
+                        [--dist-name DIST_NAME] [--requirements REQUIREMENTS]
+                        [--recipe-blacklist RECIPE_BLACKLIST]
+                        [--blacklist-requirements BLACKLIST_REQUIREMENTS]
+                        [--bootstrap BOOTSTRAP] [--hook HOOK] [--force-build]
+                        [--no-force-build] [--require-perfect-match]
+                        [--no-require-perfect-match] [--allow-replace-dist]
+                        [--no-allow-replace-dist]
+                        [--local-recipes LOCAL_RECIPES]
+                        [--activity-class-name ACTIVITY_CLASS_NAME]
+                        [--service-class-name SERVICE_CLASS_NAME]
+                        [--java-build-tool {auto,ant,gradle}] [--copy-libs]
+                        [--no-copy-libs] [--add-asset ASSETS]
+                        [--add-resource RESOURCES] [--private PRIVATE]
+                        [--use-setup-py] [--ignore-setup-py] [--release]
+                        [--with-debug-symbols] [--keystore KEYSTORE]
+                        [--signkey SIGNKEY] [--keystorepw KEYSTOREPW]
+                        [--signkeypw SIGNKEYPW]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --debug               Display debug output and all build info
+  --color {always,never,auto}
+                        Enable or disable color output (default enabled on
+                        tty)
+  --sdk-dir SDK_DIR, --sdk_dir SDK_DIR
+                        The filepath where the Android SDK is installed
+  --ndk-dir NDK_DIR, --ndk_dir NDK_DIR
+                        The filepath where the Android NDK is installed
+  --android-api ANDROID_API, --android_api ANDROID_API
+                        The Android API level to build against defaults to 33
+                        if not specified.
+  --ndk-version NDK_VERSION, --ndk_version NDK_VERSION
+                        DEPRECATED: the NDK version is now found automatically
+                        or not at all.
+  --ndk-api NDK_API     The Android API level to compile against. This should
+                        be your *minimal supported* API, not normally the same
+                        as your --android-api. Defaults to min(ANDROID_API,
+                        24) if not specified.
+  --symlink-bootstrap-files, --ssymlink_bootstrap_files
+                        If True, symlinks the bootstrap files creation. This
+                        is useful for development only, it could also cause
+                        weird problems.
+  --storage-dir STORAGE_DIR
+                        Primary storage directory for downloads and builds
+                        (default: /home/runner/.local/share/python-for-
+                        android)
+  --arch ARCH           The archs to build for.
+  --dist-name DIST_NAME, --dist_name DIST_NAME
+                        The name of the distribution to use or create
+  --requirements REQUIREMENTS
+                        Dependencies of your app, should be recipe names or
+                        Python modules. NOT NECESSARY if you are using Python
+                        3 with --use-setup-py
+  --recipe-blacklist RECIPE_BLACKLIST
+                        Blacklist an internal recipe from use. Allows
+                        disabling Python 3 core modules to save size
+  --blacklist-requirements BLACKLIST_REQUIREMENTS
+                        Blacklist an internal recipe from use. Allows
+                        disabling Python 3 core modules to save size
+  --bootstrap BOOTSTRAP
+                        The bootstrap to build with. Leave unset to choose
+                        automatically.
+  --hook HOOK           Filename to a module that contains python-for-android
+                        hooks
+  --local-recipes LOCAL_RECIPES, --local_recipes LOCAL_RECIPES
+                        Directory to look for local recipes
+  --activity-class-name ACTIVITY_CLASS_NAME
+                        The full java class name of the main activity
+  --service-class-name SERVICE_CLASS_NAME
+                        Full java package name of the PythonService class
+  --java-build-tool {auto,ant,gradle}
+                        The java build tool to use when packaging the APK,
+                        defaults to automatically selecting an appropriate
+                        tool.
+  --add-asset ASSETS    Put this in the assets folder in the apk.
+  --add-resource RESOURCES
+                        Put this in the res folder in the apk.
+  --private PRIVATE     the directory with the app source code files
+                        (containing your main.py entrypoint)
+  --use-setup-py        Process the setup.py of a project if present.
+                        (Experimental!
+  --ignore-setup-py     Don't run the setup.py of a project if present. This
+                        may be required if the setup.py is not designed to
+                        work inside p4a (e.g. by installing dependencies that
+                        won't work or aren't desired on Android
+  --release             Build your app as a non-debug release build. (Disables
+                        gdb debugging among other things)
+  --with-debug-symbols  Will keep debug symbols from `.so` files.
+  --keystore KEYSTORE   Keystore for JAR signing key, will use jarsigner
+                        default if not specified (release build only)
+  --signkey SIGNKEY     Key alias to sign PARSER_APK. with (release build
+                        only)
+  --keystorepw KEYSTOREPW
+                        Password for keystore
+  --signkeypw SIGNKEYPW
+                        Password for key alias
+
+  Whether to force compilation of a new distribution
+
+  --force-build
+  --no-force-build      (this is the default)
+  --require-perfect-match
+  --no-require-perfect-match
+                        (this is the default)
+  --allow-replace-dist  (this is the default)
+  --no-allow-replace-dist
+  --copy-libs
+  --no-copy-libs        (this is the default)
+[WARNING]: prerequisites.py is experimental and does not support all prerequisites yet.
+[WARNING]: Please report any issues to the python-for-android issue tracker.
+[0m[1;34m# Check application requirements[0m
+[0m[1;34m# Compile platform[0m
+[0m[1;30m# Run ['/opt/hostedtoolcache/Python/3.9.25/x64/bin/python', '-m', 'pythonforandroid.toolchain', 'create', '--dist_name=handgesture', '--bootstrap=sdl2', '--requirements=python3,kivy', '--arch=arm64-v8a', '--arch=armeabi-v7a', '--copy-libs', '--color=always', '--storage-dir=/home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a', '--ndk-api=21', '--ignore-setup-py', '--debug'][0m
+[0m[1;30m# Cwd /home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/python-for-android[0m
+[WARNING]: prerequisites.py is experimental and does not support all prerequisites yet.
+[WARNING]: Please report any issues to the python-for-android issue tracker.
+[1m[INFO][0m:    Will compile for the following archs: arm64-v8a, armeabi-v7a
+[1m[90m[DEBUG][39m[0m:   Create directory /home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a
+[1m[90m[DEBUG][39m[0m:   Create directory /home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build
+[1m[90m[DEBUG][39m[0m:   Create directory /home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/dists
+[1m[90m[DEBUG][39m[0m:   Create directory /home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/bootstrap_builds
+[1m[90m[DEBUG][39m[0m:   Create directory /home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a/build/other_builds
+[1m[INFO][0m:    Found Android API target in $ANDROIDAPI: 31
+[1m[INFO][0m:    Available Android APIs are (31)
+[1m[INFO][0m:    Requested API target 31 is available, continuing.
+[1m[INFO][0m:    Found NDK dir in $ANDROIDNDK: /home/runner/.buildozer/android/platform/android-ndk-r23b
+[1m[INFO][0m:    Found NDK version 23b
+[1m[31m[ERROR][39m[0m:   Build failed: The minimum supported NDK version is 25. You can download it from https://developer.android.com/ndk/downloads/.
+[1m[INFO][0m:    Instructions: Please, go to the android NDK page (https://developer.android.com/ndk/downloads/) and download a supported version.
+*** The currently recommended NDK version is 28c ***
+[0m[1;31m# Command failed: ['/opt/hostedtoolcache/Python/3.9.25/x64/bin/python', '-m', 'pythonforandroid.toolchain', 'create', '--dist_name=handgesture', '--bootstrap=sdl2', '--requirements=python3,kivy', '--arch=arm64-v8a', '--arch=armeabi-v7a', '--copy-libs', '--color=always', '--storage-dir=/home/runner/work/hand-gesture/hand-gesture/.buildozer/android/platform/build-arm64-v8a_armeabi-v7a', '--ndk-api=21', '--ignore-setup-py', '--debug'][0m
+[0m[1;31m# ENVIRONMENT:[0m
+[0m[1;31m#     SHELL = '/bin/bash'[0m
+[0m[1;31m#     SELENIUM_JAR_PATH = '/usr/share/java/selenium-server.jar'[0m
+[0m[1;31m#     CONDA = '/usr/share/miniconda'[0m
+[0m[1;31m#     GITHUB_WORKSPACE = '/home/runner/work/hand-gesture/hand-gesture'[0m
+[0m[1;31m#     JAVA_HOME_11_X64 = '/usr/lib/jvm/temurin-11-jdk-amd64'[0m
+[0m[1;31m#     JAVA_HOME_25_X64 = '/usr/lib/jvm/temurin-25-jdk-amd64'[0m
+[0m[1;31m#     PKG_CONFIG_PATH = '/opt/hostedtoolcache/Python/3.9.25/x64/lib/pkgconfig'[0m
+[0m[1;31m#     GITHUB_PATH = '/home/runner/work/_temp/_runner_file_commands/add_path_a49c322d-0277-4690-a994-b932d827cbe5'[0m
+[0m[1;31m#     GITHUB_ACTION = 'build'[0m
+[0m[1;31m#     JAVA_HOME = '/usr/lib/jvm/temurin-17-jdk-amd64'[0m
+[0m[1;31m#     GITHUB_RUN_NUMBER = '21'[0m
+[0m[1;31m#     RUNNER_NAME = 'GitHub Actions 1000000020'[0m
+[0m[1;31m#     GRADLE_HOME = '/usr/share/gradle-9.3.1'[0m
+[0m[1;31m#     GITHUB_REPOSITORY_OWNER_ID = '262009007'[0m
+[0m[1;31m#     ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE = '/opt/actionarchivecache'[0m
+[0m[1;31m#     XDG_CONFIG_HOME = '/home/runner/.config'[0m
+[0m[1;31m#     Python_ROOT_DIR = '/opt/hostedtoolcache/Python/3.9.25/x64'[0m
+[0m[1;31m#     MEMORY_PRESSURE_WRITE = 'c29tZSAyMDAwMDAgMjAwMDAwMAA='[0m
+[0m[1;31m#     DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'[0m
+[0m[1;31m#     ANT_HOME = '/usr/share/ant'[0m
+[0m[1;31m#     JAVA_HOME_8_X64 = '/usr/lib/jvm/temurin-8-jdk-amd64'[0m
+[0m[1;31m#     GITHUB_TRIGGERING_ACTOR = 'neversharkkk'[0m
+[0m[1;31m#     pythonLocation = '/opt/hostedtoolcache/Python/3.9.25/x64'[0m
+[0m[1;31m#     GITHUB_REF_TYPE = 'branch'[0m
+[0m[1;31m#     HOMEBREW_CLEANUP_PERIODIC_FULL_DAYS = '3650'[0m
+[0m[1;31m#     ANDROID_NDK = '/usr/local/lib/android/sdk/ndk/27.3.13750724'[0m
+[0m[1;31m#     BOOTSTRAP_HASKELL_NONINTERACTIVE = '1'[0m
+[0m[1;31m#     PWD = '/home/runner/work/hand-gesture/hand-gesture'[0m
+[0m[1;31m#     PIPX_BIN_DIR = '/opt/pipx_bin'[0m
+[0m[1;31m#     LOGNAME = 'runner'[0m
+[0m[1;31m#     GITHUB_REPOSITORY_ID = '1160382296'[0m
+[0m[1;31m#     GITHUB_ACTIONS = 'true'[0m
+[0m[1;31m#     USE_BAZEL_FALLBACK_VERSION = 'silent:'[0m
+[0m[1;31m#     ANDROID_NDK_LATEST_HOME = '/usr/local/lib/android/sdk/ndk/29.0.14206865'[0m
+[0m[1;31m#     SYSTEMD_EXEC_PID = '1961'[0m
+[0m[1;31m#     GITHUB_SHA = '0d015677d905789b4784a8a33405aa18d4d69871'[0m
+[0m[1;31m#     GITHUB_WORKFLOW_REF = 'neversharkkk/hand-gesture/.github/workflows/build.yml@refs/heads/main'[0m
+[0m[1;31m#     POWERSHELL_DISTRIBUTION_CHANNEL = 'GitHub-Actions-ubuntu24'[0m
+[0m[1;31m#     RUNNER_ENVIRONMENT = 'github-hosted'[0m
+[0m[1;31m#     DOTNET_MULTILEVEL_LOOKUP = '0'[0m
+[0m[1;31m#     GITHUB_REF = 'refs/heads/main'[0m
+[0m[1;31m#     RUNNER_OS = 'Linux'[0m
+[0m[1;31m#     GITHUB_REF_PROTECTED = 'false'[0m
+[0m[1;31m#     HOME = '/home/runner'[0m
+[0m[1;31m#     GITHUB_API_URL = 'https://api.github.com'[0m
+[0m[1;31m#     LANG = 'C.UTF-8'[0m
+[0m[1;31m#     GOROOT_1_25_X64 = '/opt/hostedtoolcache/go/1.25.7/x64'[0m
+[0m[1;31m#     RUNNER_TRACKING_ID = 'github_de2bfb24-6742-4de3-87e9-39447d3cdf11'[0m
+[0m[1;31m#     RUNNER_ARCH = 'X64'[0m
+[0m[1;31m#     MEMORY_PRESSURE_WATCH = '/sys/fs/cgroup/system.slice/hosted-compute-agent.service/memory.pressure'[0m
+[0m[1;31m#     RUNNER_TEMP = '/home/runner/work/_temp'[0m
+[0m[1;31m#     GITHUB_STATE = '/home/runner/work/_temp/_runner_file_commands/save_state_a49c322d-0277-4690-a994-b932d827cbe5'[0m
+[0m[1;31m#     EDGEWEBDRIVER = '/usr/local/share/edge_driver'[0m
+[0m[1;31m#     JAVA_HOME_21_X64 = '/usr/lib/jvm/temurin-21-jdk-amd64'[0m
+[0m[1;31m#     GITHUB_ENV = '/home/runner/work/_temp/_runner_file_commands/set_env_a49c322d-0277-4690-a994-b932d827cbe5'[0m
+[0m[1;31m#     GITHUB_EVENT_PATH = '/home/runner/work/_temp/_github_workflow/event.json'[0m
+[0m[1;31m#     INVOCATION_ID = 'a0348fc869274ec7b8899835e0d96774'[0m
+[0m[1;31m#     GITHUB_EVENT_NAME = 'push'[0m
+[0m[1;31m#     GITHUB_RUN_ID = '22175330031'[0m
+[0m[1;31m#     JAVA_HOME_17_X64 = '/usr/lib/jvm/temurin-17-jdk-amd64'[0m
+[0m[1;31m#     ANDROID_NDK_HOME = '/usr/local/lib/android/sdk/ndk/27.3.13750724'[0m
+[0m[1;31m#     GITHUB_STEP_SUMMARY = '/home/runner/work/_temp/_runner_file_commands/step_summary_a49c322d-0277-4690-a994-b932d827cbe5'[0m
+[0m[1;31m#     HOMEBREW_NO_AUTO_UPDATE = '1'[0m
+[0m[1;31m#     GITHUB_ACTOR = 'neversharkkk'[0m
+[0m[1;31m#     NVM_DIR = '/home/runner/.nvm'[0m
+[0m[1;31m#     SGX_AESM_ADDR = '1'[0m
+[0m[1;31m#     GITHUB_RUN_ATTEMPT = '1'[0m
+[0m[1;31m#     ANDROID_HOME = '/usr/local/lib/android/sdk'[0m
+[0m[1;31m#     GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql'[0m
+[0m[1;31m#     ACCEPT_EULA = 'Y'[0m
+[0m[1;31m#     USER = 'runner'[0m
+[0m[1;31m#     PSModulePath = '/root/.local/share/powershell/Modules:/usr/local/share/powershell/Modules:/opt/microsoft/powershell/7/Modules:/usr/share/az_14.6.0'[0m
+[0m[1;31m#     GITHUB_SERVER_URL = 'https://github.com'[0m
+[0m[1;31m#     PIPX_HOME = '/opt/pipx'[0m
+[0m[1;31m#     GECKOWEBDRIVER = '/usr/local/share/gecko_driver'[0m
+[0m[1;31m#     CHROMEWEBDRIVER = '/usr/local/share/chromedriver-linux64'[0m
+[0m[1;31m#     SHLVL = '1'[0m
+[0m[1;31m#     ANDROID_SDK_ROOT = '/usr/local/lib/android/sdk'[0m
+[0m[1;31m#     VCPKG_INSTALLATION_ROOT = '/usr/local/share/vcpkg'[0m
+[0m[1;31m#     GITHUB_ACTOR_ID = '262009007'[0m
+[0m[1;31m#     ACTIONS_ORCHESTRATION_ID = '17788db5-bbbf-4103-af31-f94333ce19a8.build.__default'[0m
+[0m[1;31m#     RUNNER_TOOL_CACHE = '/opt/hostedtoolcache'[0m
+[0m[1;31m#     ImageVersion = '20260209.23.1'[0m
+[0m[1;31m#     Python3_ROOT_DIR = '/opt/hostedtoolcache/Python/3.9.25/x64'[0m
+[0m[1;31m#     DOTNET_NOLOGO = '1'[0m
+[0m[1;31m#     GOROOT_1_23_X64 = '/opt/hostedtoolcache/go/1.23.12/x64'[0m
+[0m[1;31m#     GITHUB_WORKFLOW_SHA = '0d015677d905789b4784a8a33405aa18d4d69871'[0m
+[0m[1;31m#     GOROOT_1_24_X64 = '/opt/hostedtoolcache/go/1.24.13/x64'[0m
+[0m[1;31m#     GITHUB_REF_NAME = 'main'[0m
+[0m[1;31m#     GITHUB_JOB = 'build'[0m
+[0m[1;31m#     LD_LIBRARY_PATH = '/opt/hostedtoolcache/Python/3.9.25/x64/lib'[0m
+[0m[1;31m#     XDG_RUNTIME_DIR = '/run/user/1001'[0m
+[0m[1;31m#     AZURE_EXTENSION_DIR = '/opt/az/azcliextensions'[0m
+[0m[1;31m#     GITHUB_REPOSITORY = 'neversharkkk/hand-gesture'[0m
+[0m[1;31m#     Python2_ROOT_DIR = '/opt/hostedtoolcache/Python/3.9.25/x64'[0m
+[0m[1;31m#     ANDROID_NDK_ROOT = '/usr/local/lib/android/sdk/ndk/27.3.13750724'[0m
+[0m[1;31m#     GOROOT_1_22_X64 = '/opt/hostedtoolcache/go/1.22.12/x64'[0m
+[0m[1;31m#     CHROME_BIN = '/usr/bin/google-chrome'[0m
+[0m[1;31m#     GITHUB_RETENTION_DAYS = '90'[0m
+[0m[1;31m#     JOURNAL_STREAM = '9:14356'[0m
+[0m[1;31m#     RUNNER_WORKSPACE = '/home/runner/work/hand-gesture'[0m
+[0m[1;31m#     GITHUB_ACTION_REPOSITORY = ''[0m
+[0m[1;31m#     PATH = '/home/runner/.buildozer/android/platform/apache-ant-1.9.4/bin:/opt/hostedtoolcache/Python/3.9.25/x64/bin:/opt/hostedtoolcache/Python/3.9.25/x64:/snap/bin:/home/runner/.local/bin:/opt/pipx_bin:/home/runner/.cargo/bin:/home/runner/.config/composer/vendor/bin:/usr/local/.ghcup/bin:/home/runner/.dotnet/tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin'[0m
+[0m[1;31m#     GITHUB_BASE_REF = ''[0m
+[0m[1;31m#     GHCUP_INSTALL_BASE_PREFIX = '/usr/local'[0m
+[0m[1;31m#     CI = 'true'[0m
+[0m[1;31m#     SWIFT_PATH = '/usr/share/swift/usr/bin'[0m
+[0m[1;31m#     ImageOS = 'ubuntu24'[0m
+[0m[1;31m#     GITHUB_REPOSITORY_OWNER = 'neversharkkk'[0m
+[0m[1;31m#     GITHUB_HEAD_REF = ''[0m
+[0m[1;31m#     GITHUB_ACTION_REF = ''[0m
+[0m[1;31m#     ENABLE_RUNNER_TRACING = 'true'[0m
+[0m[1;31m#     GITHUB_WORKFLOW = 'Build Android APK'[0m
+[0m[1;31m#     DEBIAN_FRONTEND = 'noninteractive'[0m
+[0m[1;31m#     GITHUB_OUTPUT = '/home/runner/work/_temp/_runner_file_commands/set_output_a49c322d-0277-4690-a994-b932d827cbe5'[0m
+[0m[1;31m#     AGENT_TOOLSDIRECTORY = '/opt/hostedtoolcache'[0m
+[0m[1;31m#     _ = '/opt/hostedtoolcache/Python/3.9.25/x64/bin/buildozer'[0m
+[0m[1;31m#     PACKAGES_PATH = '/home/runner/.buildozer/android/packages'[0m
+[0m[1;31m#     ANDROIDSDK = '/home/runner/.buildozer/android/platform/android-sdk'[0m
+[0m[1;31m#     ANDROIDNDK = '/home/runner/.buildozer/android/platform/android-ndk-r23b'[0m
+[0m[1;31m#     ANDROIDAPI = '31'[0m
+[0m[1;31m#     ANDROIDMINAPI = '21'[0m
 [0m[1;31m# [0m
+[0m[1;31m# Buildozer failed to execute the last command[0m
+[0m[1;31m# The error might be hidden in the log above this error[0m
+[0m[1;31m# Please read the full log, and search for it before[0m
+[0m[1;31m# raising an issue with buildozer itself.[0m
+[0m[1;31m# In case of a bug report, please add a full log with log_level = 2[0m

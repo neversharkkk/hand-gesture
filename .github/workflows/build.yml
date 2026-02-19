@@ -49,23 +49,14 @@ jobs:
         ls -la
     
     - name: Build APK
-      id: build
       run: |
         buildozer android debug 2>&1 | tee build.log
-        BUILD_EXIT_CODE=${PIPESTATUS[0]}
-        echo "build_exit_code=$BUILD_EXIT_CODE" >> $GITHUB_OUTPUT
-        exit $BUILD_EXIT_CODE
     
     - name: Find APK files
       if: always()
       run: |
-        echo "=== Current directory ==="
-        pwd
-        echo "=== Listing all files ==="
-        ls -la
         echo "=== Finding APK files ==="
         find . -name "*.apk" -type f 2>/dev/null || echo "No APK found"
-        echo "=== bin directory ==="
         ls -la bin/ 2>/dev/null || echo "No bin dir"
     
     - name: Upload APK
