@@ -45,7 +45,7 @@ jobs:
     
     - name: Prepare source files
       run: |
-        cp main_test.py main.py
+        cp main_v1.5.py main.py
         ls -la
     
     - name: Build APK
