@@ -45,7 +45,7 @@ jobs:
     
     - name: Prepare source files
       run: |
-        cp main_v2.3.py main.py
+        cp main_v2.4.py main.py
         ls -la
     
     - name: Build APK
@@ -55,7 +55,6 @@ jobs:
     - name: Find APK files
       if: always()
       run: |
-        echo "=== Finding APK files ==="
         find . -name "*.apk" -type f 2>/dev/null || echo "No APK found"
         ls -la bin/ 2>/dev/null || echo "No bin dir"
     
@@ -63,7 +62,7 @@ jobs:
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: hand-gesture-apk-v2.3
+        name: hand-gesture-apk-v2.4
         path: bin/*.apk
         retention-days: 30
     
